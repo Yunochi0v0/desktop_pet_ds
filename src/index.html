@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<!--
+  Prompt Pet - Phase 1（桌宠）+ Phase 2（交互气泡）+ Phase 3（AI 接入 / BYOK）
+  [AI-GEN] 页面结构。注意：这里没有 inline <script> / <style>，
+           是为了满足 CSP（安全策略），也让职责更清晰。
+-->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      安全策略：只允许加载本地文件，禁止外部脚本与远程资源。
+
+      ① 为什么显式写上 file: ？
+         因为 Electron 是用 file:// 协议加载这个页面的，而 file:// 页面的 origin 是
+         「不透明来源」，在部分 Chromium 版本上 'self' 匹配不到同目录的
+         style.css / renderer.js，会导致页面没样式、脚本不执行。
+         显式放行 file: 可以避免这个坑，同时依然禁止一切远程脚本。
+
+      ② Phase 3 新增 connect-src —— 这一条不加，AI 请求必然失败。
+         `fetch()` 属于 connect-src 管辖；没有显式声明时它回落到 default-src，
+         而 default-src 是 'self' file:，于是对 https://api.deepseek.com 的请求
+         会在发出去之前就被 CSP 拦下，控制台只留下一句含糊的
+         "Refused to connect ... because it violates the CSP directive"。
+         所以这里显式只放行 DeepSeek 这一个域名（不是通配 *）。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file:; img-src 'self' data: file:; connect-src 'self' file: https://api.deepseek.com;"
+    />
+    <title>Prompt Pet</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <!--
+      #pet      外层：只负责「拖拽定位」（translate3d）
+      .pet-core 内层：只负责「待机呼吸动画」+「思考中的淡蓝微光晕」
+      两层分开的原因见 style.css 顶部说明 —— 动画和拖拽都用 transform，
+      放在同一个元素上会互相覆盖。
+
+      角色立绘是已经抠好底的透明 PNG（内部白色如女仆头饰、衣领、眼睛高光都保留），
+      由 .deepworks 里的脚本从上传的原图处理而来。
+
+      ⚠️ 立绘差分（Phase 3.5 起）：<img> 的 src 现在由「思考深度」决定，
+         三张图分别是
+           low -> assets/pet-low.png   （Q 版三头身）
+           high-> assets/pet-high.png  （中等比例）
+           max -> assets/pet-max.png   （九头身）
+         映射表在 renderer.js 的 DEPTHS 里，**换图只要覆盖同名文件**，
+         不需要改任何代码。HTML 里这个 src 只是首帧兜底，
+         页面加载后 init() 会按 localStorage 里存的深度覆盖它。
+
+      draggable="false" 很关键：否则拖拽时 Chromium 会启动图片的原生拖拽，
+      冒出一个半透明的「幽灵图片」，把自定义拖拽搞乱。
+    -->
+    <div id="pet" role="img" aria-label="Prompt Pet 桌宠">
+      <div class="pet-core">
+        <img
+          id="pet-sprite"
+          class="pet-sprite"
+          src="assets/pet-low.png"
+          alt=""
+          draggable="false"
+        />
+      </div>
+    </div>
+
+    <!--
+      Phase 2：气泡对话框 / Phase 3：同一个气泡里装两个「视图」
+      #bubble        外层：只负责「定位」（JS 用 translate3d 摆放）
+      .bubble-inner  内层：视觉样式 + 淡入缩放动画
+      同样拆两层，理由和 #pet 一样：定位用 transform，动画也用 transform。
+
+      注意 data-arrow：气泡在球上方时箭头朝下(down)，在球下方时朝上(up)，
+      由 renderer.js 的 positionBubble() 动态切换。
+
+      Phase 3 的结构变化（仍复用同一个气泡，不新开窗口）：
+        .bubble-head      标题条 —— 右侧新增「齿轮」按钮（#bubble-gear）
+        #view-chat        视图 A：聊天（消息列表 + 输入框 + 发送）
+        #view-settings    视图 B：设置（API Key 密码框 + 保存）
+        #view-wallet      视图 C：钱包（Phase 3.14，右键桌宠查余额）
+      三个视图用 hidden 属性互斥显示，由 renderer.js 的 setPanel() 切换。
+      ⚠️ CSS 里必须补 `.bubble-view[hidden] { display: none }`，
+         否则作者样式里的 display:flex 会盖过 [hidden] 的默认 display:none。
+    -->
+    <div
+      id="bubble"
+      class="bubble"
+      data-arrow="down"
+      role="dialog"
+      aria-label="和 Prompt Pet 说话"
+      aria-hidden="true"
+    >
+      <div class="bubble-inner">
+        <div class="bubble-head">
+          <span class="bubble-dot" aria-hidden="true"></span>
+          <span id="bubble-title" class="bubble-title">吃白饭的大肥鱼</span>
+
+          <!-- 齿轮：点一下在「聊天」和「设置」之间切换 -->
+          <button
+            id="bubble-gear"
+            class="bubble-gear"
+            type="button"
+            title="设置（填 API key）"
+            aria-label="设置"
+          >
+            <!-- 齿轮用内联 SVG 画，不引外部图标库（CSP 禁止远程资源） -->
+            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false">
+              <path
+                fill="currentColor"
+                d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <!-- ================= 视图 A：聊天 ================= -->
+        <div id="view-chat" class="bubble-view">
+          <!--
+            消息列表：渲染进程往里追加 .msg 节点。
+            空的时候 CSS 用 :empty 把它隐藏，保持 Phase 2 那种紧凑的小气泡。
+          -->
+          <div id="bubble-log" class="bubble-log" role="log" aria-live="polite"></div>
+
+          <!--
+            spellcheck 关掉，避免桌面宠上出现红色波浪线。
+            ↩ 换行、⌘/Ctrl+↵ 发送（见 renderer.js 的 phase3 事件绑定）。
+          -->
+          <textarea
+            id="bubble-input"
+            class="bubble-input"
+            rows="3"
+            placeholder="为什么不问问大肥鱼？"
+            spellcheck="false"
+            autocomplete="off"
+            aria-label="输入内容"
+          ></textarea>
+
+          <div class="bubble-foot">
+            <span id="bubble-tag" class="bubble-tag">↩ 换行 · ⌘/Ctrl+↵ 发送</span>
+            <button id="bubble-send" class="bubble-send" type="button">
+              发送
+            </button>
+          </div>
+        </div>
+
+        <!-- ================= 视图 B：设置（Phase 3 新增） ================= -->
+        <div id="view-settings" class="bubble-view" hidden>
+          <label class="bubble-label" for="key-input">
+            DeepSeek API Key（填一次就存在本机）
+          </label>
+
+          <!--
+            type="password"：用系统统一的圆点遮罩，明文不进截图、不被旁人一眼看到。
+            ⚠️ 这里只是「视觉遮挡」，localStorage 里仍是明文 —— 本机自己的 key，
+               这个取舍写进了 DECISIONS.md（D7）。
+          -->
+          <input
+            id="key-input"
+            class="bubble-input bubble-input--key"
+            type="password"
+            placeholder="sk-..."
+            spellcheck="false"
+            autocomplete="off"
+            aria-label="DeepSeek API Key"
+          />
+
+          <p id="key-status" class="key-status">还没有饭卡，先填一个才能聊天～</p>
+
+          <!--
+            思考深度：一个开关同时管两件事 ——
+              ① 换装：用哪张立绘、桌宠多大（Phase 3.5）；
+              ② 换脑子：请求发给哪个模型、回答预算多少、要不要显示推理过程（Phase 3.6）。
+            采用原生 <select>：macOS 会弹出系统菜单，键盘/触控板都好用，
+            而且不需要自己实现一遍下拉列表（少一份可能出错的状态机）。
+            三个 value 必须与 renderer.js 的 DEPTHS 键名一致：low / high / max。
+          -->
+          <label class="bubble-label" for="depth-select">思考深度</label>
+          <div class="bubble-select-wrap">
+            <select id="depth-select" class="bubble-select" aria-label="思考深度">
+              <option value="low">轻量 · 快速直答 · 192px</option>
+              <option value="high">标准 · 周到一些 · 190×250</option>
+              <option value="max">极致 · 会推理 · 210×315</option>
+            </select>
+          </div>
+          <p id="depth-status" class="key-status">当前：轻量 · chat · 192×192</p>
+
+          <!--
+            [AI-GEN] Phase 3.12：本地记忆
+            记忆存在 localStorage['chat_history']，清空只清聊天记录。
+            （Phase 3.13 起好感度改为后台数值，界面不显示任何数字或进度条。）
+          -->
+          <label class="bubble-label">聊天记忆</label>
+          <p id="memory-status" class="key-status">记忆 0 条</p>
+          <div class="bubble-foot">
+            <button
+              id="memory-clear"
+              class="bubble-ghost"
+              type="button"
+              title="清空 chat_history"
+            >
+              清空聊天记忆
+            </button>
+            <span class="bubble-tag">最近 5 轮会带给模型</span>
+          </div>
+
+          <div class="bubble-foot">
+            <button id="key-clear" class="bubble-ghost" type="button">
+              清除
+            </button>
+            <button id="key-save" class="bubble-send" type="button">保存</button>
+          </div>
+        </div>
+
+        <!--
+          ================= 视图 C：钱包（Phase 3.14） =================
+          右键桌宠触发。只读接口，不写记忆、不碰好感度、不改聊天记录；
+          左键点桌宠即可切回聊天，输入框行为完全不变。
+        -->
+        <div id="view-wallet" class="bubble-view" hidden>
+          <p id="wallet-text" class="wallet-text" role="status" aria-live="polite">（翻找钱包中...）</p>
+          <div class="bubble-foot">
+            <span class="bubble-tag">右键查余额 · 左键回聊天</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

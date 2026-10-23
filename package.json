@@ -1,0 +1,22 @@
+{
+  "name": "prompt-pet",
+  "productName": "Prompt Pet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prompt Pet（代码精灵桌面版）- 基于 Electron + HTML/CSS/JS 的桌面透明桌宠",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "PET_DEBUG=1 electron ."
+  },
+  "keywords": [
+    "electron",
+    "desktop-pet",
+    "vibe-coding"
+  ],
+  "author": "katzegott",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

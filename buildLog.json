@@ -1,0 +1,564 @@
+{
+  "_schema": {
+    "version": 1,
+    "description": "Prompt Pet 构建日志。每个 Phase 至少产生两条记录：[AI-GEN] 由 AI 完成的实现，[MANUAL] 必须由人完成的操作/验收。",
+    "fields": {
+      "id": "唯一编号，phaseN-序号",
+      "date": "ISO 8601 日期时间",
+      "phase": "所属阶段",
+      "type": "[AI-GEN] = AI 生成；[MANUAL] = 必须人工完成",
+      "task": "本条记录对应的工作包",
+      "description": "做了什么 / 需要做什么",
+      "files": "涉及的文件路径",
+      "verification": "如何验证（AI 自测 / 人工验收）",
+      "commit": "对应的 Git commit 信息",
+      "status": "done | pending-human-acceptance"
+    }
+  },
+  "entries": [
+    {
+      "id": "phase1-001",
+      "date": "2026-10-19T10:40:00+08:00",
+      "phase": "Phase 1",
+      "phaseGoal": "Electron 基础框架与桌面透明悬浮",
+      "type": "[AI-GEN]",
+      "task": "搭建 Electron 项目骨架并实现透明悬浮窗口 + 动态鼠标穿透 + 可拖拽桌宠",
+      "description": "创建 package.json / .gitignore / src 目录；实现 main.js（transparent、frame:false、alwaysOnTop、skipTaskbar、铺满工作区、默认 setIgnoreMouseEvents(true,{forward:true})）；实现 preload.js（contextBridge 暴露 3 个白名单 IPC）；实现 index.html / style.css（赛博发光圆球 + translateY 呼吸动画，固定右下角）；实现 renderer.js（mousemove 命中检测驱动穿透开关、mousedown/mousemove/mouseup 拖拽、translate3d 定位、四向边界限制）。不包含弹窗与 API。",
+      "files": [
+        "prompt-pet/package.json",
+        "prompt-pet/.gitignore",
+        "prompt-pet/src/main.js",
+        "prompt-pet/src/preload.js",
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/renderer.js"
+      ],
+      "verification": "AI 自测：IPC 通道名在 main.js / preload.js / renderer.js 三处保持一致；package.json 与 buildLog.json 通过 JSON 解析校验；CSS 变量 --pet-size 与 main.js 的 PET_SIZE 均为 96。真实窗口行为未验证（环境缺少 Node.js）。",
+      "commit": "feat(phase1): 搭建 Electron 透明悬浮桌宠框架，实现动态鼠标穿透与按住拖拽",
+      "status": "done"
+    },
+    {
+      "id": "phase1-002",
+      "date": "2026-10-19T10:40:00+08:00",
+      "phase": "Phase 1",
+      "phaseGoal": "Electron 基础框架与桌面透明悬浮",
+      "type": "[MANUAL]",
+      "task": "安装 Node.js 与依赖、启动应用，并按 PLAN.md 的 A1–A10 亲手验收",
+      "description": "1) 安装 Node.js（≥18，推荐 LTS）；2) 在 prompt-pet 目录执行 npm install 安装 Electron；3) 执行 npm start 启动桌宠；4) 逐条验收 A1–A10，重点亲手验证 A4（点击球体旁边的透明区域能点到底下的桌面图标）与 A7（球体四向都无法被拖出屏幕）；5) 把验收结论填写到 DEV_LOG.md；6) 验收通过后执行 git commit 形成 checkpoint。",
+      "files": [
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/PLAN.md"
+      ],
+      "verification": "人工验收（Human-only Gate）：必须由本人在真实桌面上操作，AI 无法替代。",
+      "commit": "docs(phase1): 记录 Phase 1 人工验收结果",
+      "status": "done"
+    },
+    {
+      "id": "phase1-003",
+      "date": "2026-10-19T15:20:00+08:00",
+      "phase": "Phase 1",
+      "phaseGoal": "Electron 基础框架与桌面透明悬浮",
+      "type": "[AI-GEN]",
+      "task": "修正 Electron 透明窗口配置并加固启动自检（回应「浏览器打开是白底、有边框」的排查）",
+      "description": "排查结论：白底与边框来自浏览器窗口本身，非项目缺陷，必须用 Electron 运行才能验证透明。改动：1) style.css 的 html/body 背景改为 background: transparent !important 并加说明注释；2) main.js 改为 INDEX_HTML / PRELOAD_JS 绝对路径常量，新增启动前 checkFiles() 自检、did-fail-load 加载失败诊断、console-message 监听兼容 Electron 35+ 新签名；3) index.html 的 CSP 显式放行 file: 协议，避免 file:// 下 'self' 匹配不到本地资源。确认 package.json 的 \"main\" 必须保持 \"src/main.js\"（写成 \"main.js\" 会导致 Unable to find Electron app）。",
+      "files": [
+        "prompt-pet/src/main.js",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/index.html",
+        "prompt-pet/ERROR_LOG.md",
+        "prompt-pet/DEV_LOG.md"
+      ],
+      "verification": "AI 自测：3 个 JS 文件通过 JavaScriptCore 语法解析；配置自检 13 项全部通过；用 JavaScriptCore 真实执行 renderer.js（mock DOM + 模拟鼠标事件）跑 13 项断言全部通过，覆盖初始位置、命中检测与容差、穿透开关切换、拖拽跟随、四向左上/右下边界钳制、松手后停止跟随。真实透明窗口未验证（环境缺少 Node.js）。",
+      "commit": "fix(phase1): 加固 Electron 启动路径与透明窗口配置，补充启动自检与加载失败诊断",
+      "status": "done"
+    },
+    {
+      "id": "phase1-004",
+      "date": "2026-10-19T15:20:00+08:00",
+      "phase": "Phase 1",
+      "phaseGoal": "Electron 基础框架与桌面透明悬浮",
+      "type": "[MANUAL]",
+      "task": "安装 Node.js、启动 Electron，确认透明窗口与鼠标穿透真实生效",
+      "description": "1) 安装 Node.js LTS（推荐官方 pkg 或 nvm，避免 sudo npm）；2) 在 prompt-pet 目录执行 npm install；3) 执行 npm start（排错时用 npm run dev 自动打开 DevTools）；4) 确认三件事：桌面能透过窗口看到、球体没有方形暗边、鼠标移出球体后能点到底下的桌面图标；5) 若安装或启动报错，按 outputs/electron-run-guide.md 的排错表处理（EACCES 权限、Gatekeeper 隔离属性、找不到文件等）。",
+      "files": [
+        "prompt-pet/DEV_LOG.md"
+      ],
+      "verification": "✅ 人工验收通过 —— 本人在对话中确认「桌宠经过测试，无问题」。本次为整体结论，未逐条勾选 A1–A10，也未提供 Node / Electron 版本号；如需逐条留档，可补填 DEV_LOG.md 中的空白模板。",
+      "commit": "docs(phase1): 记录 Electron 首次成功运行结果",
+      "status": "done"
+    },
+    {
+      "phase": "Phase 2",
+      "phaseGoal": "交互弹窗（气泡对话框）",
+      "id": "phase2-001",
+      "date": "2026-10-19T18:30:00+08:00",
+      "type": "[AI-GEN]",
+      "task": "实现点击桌宠弹出气泡对话框、可输入文字、再次点击收起",
+      "description": "index.html 新增气泡 DOM（#bubble 定位层 > .bubble-inner 动画层 > 标题条 + #bubble-input textarea + #bubble-send 按钮），刻意分两层以免 translate3d 与 scale 动画互相覆盖；style.css 新增 --bubble-w: 264px 与完整气泡样式，用 visibility:hidden（而非 display:none）保留布局尺寸，使 JS 在显示前即可实测宽高；.bubble-input 显式 user-select: text 以覆盖 body 的 user-select: none。renderer.js 新增 DRAG_THRESHOLD=4 位移阈值与 press 状态机，实现「按下先不决定、位移超阈值才升级为拖拽、松开时未升级才算单击」，解决单击与拖拽共用 mousedown 的冲突；命中检测扩展为 isPointInteractive() = 球体 ∪ 打开中的气泡；positionBubble() 实现球左上方定位 + 右对齐 + 上方放不下自动翻转到下方（切换 data-arrow）+ 边界钳制；openBubble/closeBubble/toggleBubble 三种关闭方式（再次单击球体 / ESC / 窗口失焦）。preload.js 新增第 4 个白名单方法 focusWindow()，main.js 新增 ipcMain.on(\"pet:focus-window\")（带 isTrustedSender 校验）。关键设计：穿透窗口收不到「点在桌面上」的点击，故改用 window 的 blur 事件实现「点击气泡外部关闭」。未包含任何 AI API 调用，#bubble-send 保持 disabled（Phase 3 启用）。",
+      "files": [
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/preload.js",
+        "prompt-pet/src/main.js",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/ERROR_LOG.md",
+        "prompt-pet/DEV_LOG.md"
+      ],
+      "verification": "AI 自测：3 个 JS 文件通过 JavaScriptCore 语法解析；IPC 通道名 main.js 与 preload.js 完全一致（4 条）；HTML 元素 id 与 renderer.js 的 getElementById 引用一一对应；CSS 类名 interactive / bubble-open / dragging 在 CSS 与 JS 两处均存在；尺寸常量同步（--pet-size 96 ↔ PET_SIZE 96，--bubble-w 264 ↔ BUBBLE_FALLBACK.w 264）；renderer.js 安全开关齐全且未直接引用 ipcRenderer。用 JavaScriptCore 真实执行 renderer.js（mock DOM + 模拟鼠标事件）跑 40 项断言全部通过：Phase 1 回归 11 项 + Phase 2 新增 29 项（单击开合、气泡定位与四向钳制、穿透联动、ESC 与失焦关闭、拖拽不误触气泡、拖动时气泡跟随）。真实窗口观感与输入体验未验证（环境缺少 Node.js）。",
+      "commit": "feat(phase2): 实现点击桌宠弹出气泡对话框，支持输入与再次点击收起",
+      "status": "done"
+    },
+    {
+      "phase": "Phase 2",
+      "phaseGoal": "交互弹窗（气泡对话框）",
+      "id": "phase2-002",
+      "date": "2026-10-19T18:30:00+08:00",
+      "type": "[MANUAL]",
+      "task": "启动 Electron，按 PLAN.md 的 B1–B10 亲手验收气泡弹窗",
+      "description": "在 prompt-pet 目录执行 npm start，逐条验收 B1–B10。重点三条：B2/B3 把球拖到屏幕四个角与最顶部，逐个位置点开气泡确认位置正确且不被屏幕边缘裁掉；B8 连续快速拖动球 5 次以上，确认气泡一次都没被误触发；B10 关掉气泡后重新验证 Phase 1 的 A4（点击透明区域穿透）与 A7（无法拖出屏幕）未被破坏。另外确认 B4（打开后可直接打字，无需先点输入框）与 B7（点击桌面别处气泡自动收起）。把结果填入 DEV_LOG.md 的 Phase 2 验收记录。",
+      "files": [
+        "prompt-pet/DEV_LOG.md"
+      ],
+      "verification": "人工验收（Human-only Gate）：气泡的视觉观感、输入焦点行为、失焦收起的时机，以及「拖拽不误触弹窗」的手感，都必须在真实桌面上由本人操作确认，AI 无法替代。",
+      "commit": "docs(phase2): 记录气泡弹窗人工验收结果",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase2-003",
+      "date": "2026-10-22T00:00:00+08:00",
+      "phase": "Phase 2",
+      "phaseGoal": "交互弹窗（气泡对话框）",
+      "type": "[AI-GEN]",
+      "task": "视觉替换：用角色立绘取代发光圆球，并把气泡改为 DeepSeek 风格",
+      "description": "1) 素材处理：把上传的 610x610 白底 JPEG 抠成透明 PNG（src/assets/pet-character.png，256x256，58.4KB）。抠图采用从画布四角洪水填充（容差 48）+ 标记色转透明 + alpha 腐蚀1px再轻微羽化 + 按 alpha 自动裁剪等比缩放居中。之所以不用全局去白：角色本身有大量白色（女仆头饰蕾丝、衣领、眼睛高光），按颜色去白会把内容白一起打穿；洪水填充按连通性判断，只吃与边缘连通的背景白。2) index.html：删除 .pet-core 里的 .pet-ring / .pet-eye 装饰 div，换成 <img class=\"pet-sprite\" draggable=\"false\">；气泡标题改为 DeepSeek，placeholder 改为「给 DeepSeek 发送消息」。3) style.css：.pet-core 去掉圆形渐变背景/黄色发光边框/box-shadow 改为纯动画容器；新增 .pet-sprite（用 filter: drop-shadow 沿 alpha 轮廓投影，避免 box-shadow 画出方形影子；scale(1.1) 补偿立绘四周约 10% 的透明留白）；气泡整体改为 DeepSeek 浅色风格（品牌蓝 #4d6bfe、白卡片、16px 圆角、柔和阴影、输入框浅灰无边框聚焦时亮品牌蓝描边、发送按钮实心蓝胶囊）；#pet::after 脚下投影改为深蓝柔和阴影。4) renderer.js 一行未改，交互逻辑完全不受影响。5) 新增自包含预览页 outputs/phase2-preview.html（内联 style.css + base64 角色图），用三个舞台展示待机 / 气泡在左上 / 角色贴顶时气泡翻转三种状态。",
+      "files": [
+        "prompt-pet/src/assets/pet-character.png",
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/ERROR_LOG.md",
+        "prompt-pet/DEV_LOG.md",
+        "outputs/phase2-preview.html"
+      ],
+      "verification": "AI 自测：立绘为 RGBA 256x256 58.4KB，独立用 PIL 逐像素复核确认四角与最外层一圈 alpha 全为 0、中心像素 (107,129,187,255) 不透明证明本体未受损、边缘半透明像素仅 1.47%（正常羽化）；旧球体元素 pet-ring / pet-eye / --neon 在 HTML 与 CSS 中已无残留；CSS 括号平衡 35/35 且关键选择器齐全；尺寸常量仍同步（--pet-size 96 ↔ PET_SIZE 96、--bubble-w 264 ↔ BUBBLE_FALLBACK.w 264）；CSP 的 img-src 允许本地立绘且已加 draggable=false；重跑 renderer.js 的 40 项断言仍为 40 通过 / 0 失败，证明本次纯视觉改动未影响交互逻辑。注：deepworks_image_inspect 对透明四角报错，经 PIL 复核确认为工具误报。立绘观感、清晰度与悬停高亮强度未验证（需真实窗口由本人确认）。",
+      "commit": "feat(phase2): 用角色立绘替换发光圆球，气泡改为 DeepSeek 风格",
+      "status": "done"
+    },
+    {
+      "id": "phase2-004",
+      "date": "2026-10-22T00:00:00+08:00",
+      "phase": "Phase 2",
+      "phaseGoal": "交互弹窗（气泡对话框）",
+      "type": "[AI-GEN]",
+      "task": "UI 调整：角色放大一倍、收敛呼吸幅度、气泡改为聊天泡形状并带冒出动画",
+      "description": "1) 角色放大一倍：把尺寸常量整体翻倍而不是只放大图片 —— main.js 的 PET_SIZE 96->192、style.css 的 --pet-size 96px->192px、renderer.js 的兜底 size 96->192，三处同步。原因：命中检测/拖拽/边界钳制/气泡定位全部基于 PET_SIZE，只放大视觉会导致「角色看着大、但只有中间小块能点中」的错位。初始位置、钳制边界、气泡定位都是从 PET_SIZE 推导，改一个常量即自动跟随。素材 256x256 显示 192px 仍是缩小渲染，Retina 下无需重新导出。2) 呼吸幅度：@keyframes idle-breathe 位移 -9px->-3px、scale 1.02->1.008。理由：桌宠常驻桌面，幅度大会变成持续晃动，久了惹人烦。3) 冒出动画：由 translateY(6px) scale(.97) 的平淡淡入，改为 translateY(10px) scale(.2) + transition transform .34s cubic-bezier(.34,1.56,.64,1)（1.56 产生过冲，做出「啵」地鼓起来的弹出手感）；transform-origin 跟随尾巴方向（气泡在角色上方时 50% 100%，在下方时 50% 0%），确保总是从角色那一侧长出来。4) 聊天泡形状：圆角 16px->22px；尾巴由 border 三角形改为 26px 圆形伪元素 + clip-path 裁一半（圆润半圆尾巴），位置由居中改为靠右 80px（角色宽 192、气泡宽 264，角色中心距气泡右边缘 96px，尾巴中心 80+13=93px 基本对准角色）；投影由 box-shadow 改为 filter: drop-shadow（尾巴是独立伪元素，box-shadow 只认矩形盒会给气泡画方影子，drop-shadow 按 alpha 轮廓投影使气泡与尾巴共享同一条轮廓阴影）；输入框圆角 10px->14px。5) placeholder 改为「为什么不问问大肥鱼？」（仍是 placeholder 提示文字，输入框内容为空、发送按钮仍禁用）。6) 测试脚本重写为尺寸参数化（SIZE 常量 + 推导初始位置/钳制边界/气泡位置），预览页按 192px 与新气泡形状重新生成。",
+      "files": [
+        "prompt-pet/src/main.js",
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/index.html",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/ERROR_LOG.md",
+        "outputs/phase2-preview.html"
+      ],
+      "verification": "测试脚本重写为尺寸参数化后重跑，43 项断言全部通过 / 0 失败（含 Phase 1 回归 11 项、单击开合 5 项、气泡定位 4 项、穿透联动 3 项、关闭方式 4 项、拖拽不误触 3 项、边界翻转与钳制 6 项、拖动跟随 4 项、收尾 3 项）；所有期望坐标由 SIZE=192 自动推导，覆盖初始位置(1280,673)、右下钳制(1320,753)、气泡(1248,589) 与翻转后(0,206)。改动点逐条脚本核对 10 项全绿：--pet-size 192px / PET_SIZE 192 / 兜底 192 / 呼吸 -3px / 过冲贝塞尔 / transform-origin 双向 / 圆角 22px / 半圆尾巴 clip-path / 尾巴靠右 80px / placeholder 文案。CSS 括号平衡 36/36；旧三角形尾巴规则已彻底移除；box-shadow 已全部换成 drop-shadow。未验证：放大后的整体观感、呼吸幅度是否够轻、冒出动画的手感 —— 需真实 Electron 窗口由本人确认。",
+      "commit": "feat(phase2): 角色放大一倍、呼吸收敛，气泡改为聊天泡并加冒出动画",
+      "status": "done"
+    },
+    {
+      "id": "phase2-005",
+      "date": "2026-10-22T00:00:00+08:00",
+      "phase": "Phase 2",
+      "phaseGoal": "交互弹窗（气泡对话框）",
+      "type": "[AI-GEN]",
+      "task": "首次真实启动 Electron 并截图验证渲染结果（环境校验 + 应用启动 + 视觉确认）",
+      "description": "环境：Node v24.22.0 / npm 11.19.1。npm install 返回 up to date（依赖此前已装好）；npm 提示 electron@33.4.11 的 postinstall 未被 allowScripts 覆盖，但二进制实际已存在，无需处理。二进制校验方式（关键）：不能只看 node_modules/electron/dist/Electron.app/Contents/MacOS/Electron 这个仅 49K 的启动垫片，要确认 dist 体积 242M、Electron Framework.framework 存在、并执行 ./node_modules/.bin/electron --version 得到 v33.4.11。启动过程：发现已有一个实例在运行（PID 2560，启动于 17:35:51），但早于本轮改动（17:41-17:46）因此在跑旧的 96px 版本；main.js:248 有单实例锁，直接重复启动只会让旧窗口 show() 而不会加载新代码，故先 SIGTERM 旧实例再重新启动。启动后进程存活，日志仅有『文件自检通过：index.html / preload.js 均已找到』，无任何报错；且未出现『未检测到 petAPI』警告（该警告在无 Electron 的自测脚本中每次都会出现），说明 preload 的 API 注入正常。截图验证（screencapture 抓真实屏幕）：角色立绘在 192px 下正常渲染、透明生效（背后桌面与界面文字可透出、无白底方块）、立绘未被裁切（头饰/蕾丝/眼睛/领结/下摆轮廓完整，底部平边是原画半身像本身的边界）、角色停在工作区右下角 Dock 上方且四周留白充足。",
+      "files": [
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/buildLog.json"
+      ],
+      "verification": "已通过：electron --version = v33.4.11；dist 242M；应用进程存活；启动日志无报错；无 petAPI 警告（证明 preload 注入正常）；截图确认渲染、透明、未裁切、位置正确。未能通过脚本验证：交互类项目（B1-B15 中的点击开合、冒出动画手感）—— osascript 的 click at 报 -25208（终端缺少辅助功能权限），无法模拟点击，必须由人操作。发现已知限制（非本轮引入）：renderer.js 未监听 resize，位置仅在启动时按 pet:get-bounds 计算一次；main.js 使用 screen.workArea（刻意避开菜单栏/Dock，正确），但启动后再切换 Dock 显示隐藏不会重算窗口尺寸与角色位置，角色可能压在 Dock 上或离边缘过远，重启即恢复。建议 Phase 3 由主进程监听 screen.on('display-metrics-changed') 重新下发 bounds 修复。",
+      "commit": "chore(phase2): 首次真实启动 Electron 并完成渲染验证与已知限制记录",
+      "status": "done"
+    },
+    {
+      "id": "phase3-001",
+      "date": "2026-10-22T00:00:00+08:00",
+      "phase": "Phase 3",
+      "phaseGoal": "AI API 接入：DeepSeek + 本地密钥管理（BYOK）+ 思考特效 + 结果渲染",
+      "type": "[AI-GEN]",
+      "task": "接入 DeepSeek：密钥设置界面、请求与思考特效、回答渲染与错误处理",
+      "description": "1) 密钥（BYOK）：存 localStorage['deepseek_api_key']，请求头 Authorization: Bearer <key>；设置页只显示掩码 sk-…后4位，日志永不打印 key 只打布尔值；设置页增加「清除」按钮，类名特意用 .bubble-ghost 而不是 .bubble-link（后者是 Markdown 链接样式，借用会污染按钮）。2) 请求：POST https://api.deepseek.com/chat/completions，model=deepseek-chat，stream=false，messages=[{system:SYSTEM_PROMPT}, ...最近10轮history, {user:text}]，REQUEST_TIMEOUT_MS=60000 + AbortController。请求前先用 curl 带 Origin: null 实测对方 CORS：回 access-control-allow-origin: null 且放行 authorization/content-type/POST，因此渲染进程可直接 fetch，无需主进程代理（见 DECISIONS.md D8）。3) CSP 修复：index.html 显式增加 connect-src 'self' file: https://api.deepseek.com;（缺它时 fetch 在发出前就被拦，报错长得像网络不通，见 ERROR_LOG #9），并在启动自检里打印实际生效的 connect-src。4) 思考特效（硬约束：只有一张立绘）：只用 CSS 动画 —— .pet-sprite.thinking 轻微摇摆 + .pet-core::before 光晕呼吸 + body.thinking，绝不切换 img 的 src，也无霓虹/扫描线；keyframes 每帧写回 scale(1.1)（否则会覆盖 .pet-sprite 常态 transform 导致角色一思考就缩小，见 ERROR_LOG #10）；prefers-reduced-motion 时关闭。5) 结果渲染：先整体 escapeHtml 再做白名单式 Markdown 替换（粗体/行内代码/代码块/标题/列表/引用/链接），链接渲染为蓝色文字+灰色 URL 不生成可点击 <a>（常驻悬浮窗误点弹浏览器很烦），用户输入与错误提示一律 textContent；气泡宽度 264px->300px 以适配代码块（同步 BUBBLE_FALLBACK.w 与测试常量）。6) 错误处理：401/403->饭卡文案、402->余额、429->歇一会儿、400/404/422/5xx 分档、AbortError->等太久、网络失败->网络好像不通、空回答/非法 JSON 各自提示；finally 必须复位 state.sending、清 timer、setThinking(false)。7) 交互：Enter 换行、⌘/Ctrl+Enter 发送（isComposing 防中文输入法误发）、空输入不发、sending 期间拦截重复发送并禁用按钮、保存最近 10 轮历史、ESC 在设置页回聊天页/在聊天页收起气泡、齿轮在聊天与设置间切换。8) 复制三级兜底：新增 pet:copy-text IPC（主进程 clipboard.writeText）-> navigator.clipboard.writeText -> document.execCommand('copy')。9) 修掉视图切换后「点不动」：把测量+重定位封装为 relayoutBubble()，在追加消息/切换视图/窗口尺寸变化后统一调用（缓存尺寸过期会导致新内容被判成气泡外部点击，见 ERROR_LOG #12）；并补 .bubble-view[hidden] { display: none; }（[hidden] 被作者样式 display:flex 压过，见 ERROR_LOG #11）。",
+      "files": [
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/preload.js",
+        "prompt-pet/src/main.js",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DECISIONS.md",
+        "prompt-pet/ERROR_LOG.md",
+        "prompt-pet/DEV_LOG.md"
+      ],
+      "verification": "见 phase3-002（自动化测试）与 PLAN.md 的 C1-C15 人工验收清单。AI 侧已完成：Node 回归测试 148 项全通过 + Electron 端到端自检通过（真实 CSP/localStorage/剪贴板 IPC/真实 401）。",
+      "commit": "feat(phase3): 接入 DeepSeek（BYOK 密钥 + 思考特效 + 结果渲染 + 错误处理）",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3-002",
+      "date": "2026-10-22T00:00:00+08:00",
+      "phase": "Phase 3",
+      "phaseGoal": "AI API 接入：DeepSeek + 本地密钥管理（BYOK）+ 思考特效 + 结果渲染",
+      "type": "[AI-GEN]",
+      "task": "重写回归测试（node:vm 真实执行 renderer.js）并新增 Electron 端到端自检",
+      "description": "1) 用 Node 重写回归测试 .deepworks/tmp/test-renderer.mjs：node:vm + mock DOM/localStorage/fetch/setTimeout/AbortController，在同一 vm context 内可访问顶层 const（state、readKey、onSend、renderMarkdown 等），移植旧的可执行测试全部断言并新增 Phase 3 断言。之所以重写：旧测试依赖 osascript -l JavaScript（本机无 jsc），且无法覆盖 fetch/CSP/localStorage 相关逻辑。2) 断言覆盖：Phase 1 回归（透明/穿透/拖拽/边界钳制）、Phase 2 回归（单击开合、气泡定位与翻转、冒出动画、拖拽不误触）、Phase 3 新增（密钥读写与掩码、未配置拦截且不发请求、思考态开关、请求头与请求体、HTTP 状态码到文案的映射、超时中止、空回答、非法 JSON、发送去重、历史截断、Markdown 白名单转义、复制三级兜底、localStorage 不可用时的降级、ESC 分支、无定时器残留、无未捕获异常）。3) 新增 Electron 端到端自检 .deepworks/tmp/e2e-electron.js：require 真实 src/main.js（窗口配置与 IPC handler 全为真实代码），窗口在 ready-to-show 后立即 hide()，整个过程不打扰桌面，30 秒看门狗兜底退出。验证内容与结果：新增节点全部存在、初始视图为聊天页且标题 DeepSeek、真正生效的 CSP 含 connect-src api.deepseek.com、file:// 下 localStorage 可用、preload 暴露 6 个 API（含 copyText）、剪贴板 IPC 往返一致（clipboard.readText() 读回 'e2e-probe-剪贴板'）、用假 key 发真实请求得到 HTTP 401 Authentication Fails（证明请求真的出得去而非被 CSP/CORS 拦住）、思考类名可加可清、立绘 src 全程未变、CSS 真的加载（body overflow=hidden、气泡实测 300px）、渲染进程 console error 为 0。",
+      "files": [
+        ".deepworks/tmp/test-renderer.mjs",
+        ".deepworks/tmp/e2e-electron.js",
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/buildLog.json"
+      ],
+      "verification": "Node 回归测试：148 通过 / 0 失败。Electron 端到端自检：全部检查项通过，problems 为空数组，rendererConsole 仅 1 条正常日志（Phase 3 ready）。未验证：视觉观感、思考动画手感、以及用 3 个真实问题跑通 —— 属于 Human-only Gate，必须由本人操作，见 outputs/phase3-guide.md 的 C1-C15。",
+      "commit": "test(phase3): 重写 148 项回归测试并新增 Electron 端到端自检",
+      "status": "done"
+    },
+    {
+      "id": "phase3-003",
+      "date": "2026-10-22T00:00:00+08:00",
+      "phase": "Phase 3",
+      "phaseGoal": "AI API 接入：DeepSeek + 本地密钥管理（BYOK）+ 思考特效 + 结果渲染",
+      "type": "[AI-GEN]",
+      "task": "产出 Phase 3 验收指南与自包含预览页，并自检预览页真实可用",
+      "description": "1) outputs/phase3-guide.md：按 PLAN.md 的 C1-C15 逐条写「怎么操作 / 应该看到什么」，附 DeepSeek API Key 申请步骤（platform.deepseek.com -> API keys）、npm start 与 PET_DEBUG=1 排错入口、按 C1-C15 逐条走查清单、安全与费用说明（key 只存本机 localStorage、CSP 只放行 api.deepseek.com 单一域名）、7 条真实踩坑的排错表（CSP connect-src 缺失伪装成网络故障、key 带空格、动画吞 scale、单实例锁导致改了代码界面不变、气泡尺寸缓存过期、如何模拟超时）、AI 已验证与未验证的分界、Human-only Gate（申请 key / 3 个真实问题 / 故意制造一次真实错误 / 写 DEV_LOG / git commit）与已知限制。2) outputs/phase3-preview.html：不是重画的假界面，而是把真实的 index.html / style.css / renderer.js / 立绘内联成单文件（立绘转 base64 data URI），因此悬停高亮、单击开合、拖拽跟随、齿轮切设置页、未配置 key 的提示、Markdown 渲染全部是真代码在跑；三处必要改动并在页面说明卡里标注：CSS/JS 内联、立绘转 data URI、CSP 放宽 unsafe-inline（真实应用禁 inline）。由 .deepworks/tmp/make-phase3-preview.mjs 生成（读源文件 -> 替换外链 -> 追加预览专用假桌面样式与说明卡），生成后自检 10 项：style.css 已内联、renderer.js 已内联、立绘 base64、CSP 含 unsafe-inline 且仍只放行 DeepSeek、说明卡与假桌面已插入、无残留外链、html/body 标签各只出现一次。3) 预览页真机自检 .deepworks/tmp/e2e-preview.js：在隐藏的 Electron 窗口里加载 outputs/phase3-preview.html 并故意不加载 preload（即浏览器里的处境），按真人操作顺序派发真实鼠标事件。",
+      "files": [
+        "outputs/phase3-guide.md",
+        "outputs/phase3-preview.html",
+        ".deepworks/tmp/make-phase3-preview.mjs",
+        ".deepworks/tmp/e2e-preview.js",
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/buildLog.json"
+      ],
+      "verification": "生成器自检 10 项全部通过（154.6 KB 单文件，无残留外链）。预览页真机自检全部通过：说明卡与假桌面存在、立绘为内联 base64、renderer.js 真的执行（角色被 translate3d(668px,400px) 摆到右下角、打印 Phase 3 ready）、悬停派发到 window 后 body.interactive 生效、mousedown+mousemove+mouseup 后 body.bubble-open 生效且气泡被摆到 (560px,213px)、齿轮切到设置页（聊天页 hidden=true）、未配置 key 时发送得到「要先给大肥鱼买白饭吃的饭卡（API key）呦～」且未发出任何请求、发送后按钮回到禁用（输入框已清空，属预期）、console error 0 条。过程中发现并修正了自检脚本自身的两处误判：类名 interactive / bubble-open 加在 body 上而非 pet / #bubble 元素上；角色用的是 mousedown+mouseup（在 window 上）而不是 click 事件。未验证：预览页里填真实 key 后的完整对话（需本人 key）。",
+      "commit": "docs(phase3): 产出 C1-C15 验收指南与自包含预览页并完成预览自检",
+      "status": "done"
+    },
+    {
+      "id": "phase3-004",
+      "date": "2026-10-22T00:00:00+08:00",
+      "phase": "Phase 3",
+      "phaseGoal": "AI API 接入：DeepSeek + 本地密钥管理（BYOK）+ 思考特效 + 结果渲染",
+      "type": "[MANUAL]",
+      "task": "申请真实 API Key，按 C1-C15 亲手验收，并用 3 个真实问题跑通",
+      "description": "1) 到 platform.deepseek.com 申请自己的 API Key（AI 不会也不能代填）；2) npm start，按 outputs/phase3-guide.md 的 C1-C15 逐条操作；3) 用 3 个真实问题跑通（建议：解释闭包 / 写一个读 CSV 求均值的 Python 函数 / 追问空值处理以验证多轮上下文 C12）；4) 重点回归 C14：思考动画期间拖拽角色、拖到屏幕四角、点桌面图标验证穿透，确认 Phase 3 没有破坏 Phase 1 的 A4/A7 与 Phase 2 的 B8/B10；5) 故意制造一次真实错误（key 改错一位或断网发送），把现象与排查过程写进 ERROR_LOG.md；6) 把验收结论写进 DEV_LOG.md 的 Phase 3 验收记录；7) 执行 git commit 形成可回退 checkpoint。",
+      "files": [
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/ERROR_LOG.md",
+        "prompt-pet/PLAN.md"
+      ],
+      "verification": "人工验收（Human-only Gate）：回答质量、思考动画手感、真实 key 下的完整对话，以及「思考期间拖拽/穿透是否仍然正常」的手感，都必须在真实桌面上由本人确认，AI 无法替代。另注：当前项目目录下没有 .git 仓库，PLAN.md 的 Exit condition 要求执行一次 git commit，如需满足需先 git init。",
+      "commit": "docs(phase3): 记录 Phase 3 人工验收结果与真实错误排查过程",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.5-001",
+      "date": "2026-10-22T21:10:00+08:00",
+      "phase": "Phase 3.5",
+      "phaseGoal": "思考深度 ↔ 三档立绘差分 + 动态画框（换图即覆盖同名文件）",
+      "commit": "（未初始化 git，待用户 commit）",
+      "type": "[AI-GEN]",
+      "task": "实现「思考深度」下拉框：三档立绘差分、画框随档位变化、持久化与启动恢复",
+      "description": "设置页新增 depth-select（低/中/高，带说明）；renderer.js 新增 DEPTHS 映射表与 applyDepth()/readDepth()/writeDepth()/depthBox()/setBoxVars()/syncDepthControls()；state.size 重构为 state.box {w,h}，命中/拖拽/气泡/尾巴偏移全部改为宽高分开计算；init 步骤 1.5 在摆位前按存储档位应用；CSS 新增 --pet-w/--pet-h/--tail-x、#pet 尺寸过渡与 40vw/52vh 封顶、object-position: 50% 100%、下拉框样式。change 即生效即持久化（不等保存按钮）。三张占位图已建（Q 版副本），可同名覆盖。",
+      "files": [
+        "src/index.html",
+        "src/style.css",
+        "src/renderer.js",
+        "src/assets/pet-low.png",
+        "src/assets/pet-high.png",
+        "src/assets/pet-max.png"
+      ],
+      "verification": "node .deepworks/tmp/test-renderer.mjs → 190 通过 / 0 失败（新增场景 D 42 条）；Electron 端到端 e2e-electron.js ⑧ 段：三图解码、240×360 画框、localStorage=max、脚底不动、命中与出屏、思考中换档类名保留，problems: []；设置页与极高档立绘截图核对",
+      "status": "done"
+    },
+    {
+      "id": "phase3.5-002",
+      "date": "2026-10-22T21:12:00+08:00",
+      "phase": "Phase 3.5",
+      "phaseGoal": "思考深度 ↔ 三档立绘差分 + 动态画框（换图即覆盖同名文件）",
+      "commit": "（未初始化 git，待用户 commit）",
+      "type": "[MANUAL]",
+      "task": "亲手验收 D1-D8，并把三张占位图换成自己的立绘",
+      "description": "① 设置页切三档，确认立绘/画框变化且脚底不动；② 切到极致后完全退出重启，确认仍记住；③ 思考中切档确认动画不断；④ 换档后拖拽/开气泡确认穿透正常；⑤ 用紧裁透明的三张图同名覆盖 src/assets/pet-low|high|max.png（长边≥512），重启看效果。",
+      "files": [
+        "src/assets/pet-low.png",
+        "src/assets/pet-high.png",
+        "src/assets/pet-max.png",
+        "DEV_LOG.md"
+      ],
+      "verification": "人工：按 outputs/phase3-guide.md 第 10 节 D1-D8 逐条操作",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.6-001",
+      "date": "2026-10-22T22:05:00+08:00",
+      "phase": "Phase 3.6",
+      "phaseGoal": "思考深度真正接入请求：换模型 / 换预算 / 展示推理过程",
+      "commit": "（未初始化 git，待用户 commit）",
+      "type": "[AI-GEN]",
+      "task": "让「思考深度」真正改变请求：三档换模型/预算/温度，极致档展示 reasoning_content",
+      "description": "新增 buildPayload(text, depth) 统一拼请求体；DEPTHS 增加 model/maxTokens/temperature/timeoutMs/style/showReasoning；轻量 chat+600+0.6，标准 chat+1600+0.35，极致 reasoner+16000 且不发 temperature（会 400）；超时按档位 60s/180s 并同步报错文案；发请求瞬间钉住档位；解析 reasoning_content；appendReasoning() 用 details 折叠展示（展开时按 rect 差值滚到顶部）；状态行与思考提示按档位变化。",
+      "files": [
+        "src/renderer.js",
+        "src/style.css",
+        "src/index.html"
+      ],
+      "verification": "node .deepworks/tmp/test-renderer.mjs → 214 通过 / 0 失败（新增场景 E）；真实 Electron 窗口 stub fetch 抓到三档请求体 chat/600/0.6、chat/1600/0.35、reasoner/16000/无 temperature，推理块真实渲染并展开，problems: []；截图核对展开态排版",
+      "status": "done"
+    },
+    {
+      "id": "phase3.6-002",
+      "date": "2026-10-22T22:08:00+08:00",
+      "phase": "Phase 3.6",
+      "phaseGoal": "思考深度真正接入请求：换模型 / 换预算 / 展示推理过程",
+      "commit": "（未初始化 git，待用户 commit）",
+      "type": "[MANUAL]",
+      "task": "亲手对比三档的回答长度与等待时间，并验收 E1-E8",
+      "description": "配好真实 key：轻量/标准/极致各问同一句，对比长度与耗时；极致档点开「思考过程」读推理是否通顺；确认状态行显示当前模型、发送提示为「正在深度推理」；评估极致档费用是否可接受，决定日常默认档位。",
+      "files": [
+        "DEV_LOG.md",
+        "outputs/phase3-guide.md"
+      ],
+      "verification": "人工：按 outputs/phase3-guide.md 第 11 节 E1-E8 逐条操作",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.7-001",
+      "date": "2026-10-22T21:05:00+08:00",
+      "phase": "Phase 3.7",
+      "phaseGoal": "三档立绘替换 + 换档变身动画",
+      "type": "[AI-GEN]",
+      "task": "把用户提供的两张 cutout 接入标准/极致档，并给换档加「先收再放」的变身动画",
+      "description": "pet-high.png ← pet-character-cutout.png(662×788)，pet-max.png ← front-view-cutout.png(412×1116)，pet-low.png 不变；renderer.js 新增 runMorph/preloadSprite/settleAnimation/cancelMorph，applyDepth 拆出 applyBox/commit 并把换图与换框推迟到暗场执行；style.css 增加 .pet-core transform-origin 与 morph-halo 光晕扩散；reduced-motion/无 WAAPI/启动恢复直接换图。",
+      "files": [
+        "prompt-pet/src/assets/pet-high.png",
+        "prompt-pet/src/assets/pet-max.png",
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/style.css"
+      ],
+      "verification": "node .deepworks/tmp/test-renderer.mjs → 239 通过 / 0 失败（新增场景 F 25 条）；electron e2e：morph.atTrigger 仍为旧图/旧框、mid 淡出、after 换图+画框 240×360+transforming 已摘除，problems: []；截取 9 帧动画拼图与三档真尺寸对比图。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.7-002",
+      "date": "2026-10-22T21:05:00+08:00",
+      "phase": "Phase 3.7",
+      "phaseGoal": "三档立绘替换 + 换档变身动画",
+      "type": "[MANUAL]",
+      "task": "人工验收三档观感与变身节奏",
+      "description": "按 PLAN.md Phase 3.7 的 6 步自查：默认轻量；切标准/极致看收起与弹出；切回轻量看位置是否跳；连点三档看是否只剩最后一次；开启「减弱动态效果」确认不播动画；确认透明/穿透/拖拽/气泡定位无回归。重点判断：0.5s 总时长是否合适、极致档九头身是否显得偏窄。",
+      "files": [
+        "outputs/phase3.7-depth-sprites.png",
+        "outputs/phase3.7-transform-strip.png",
+        "outputs/phase3-guide.md"
+      ],
+      "verification": "人工确认并签字（FACTS 表 [MANUAL] 行）",
+      "commit": "",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.8-001",
+      "date": "2026-10-22T21:40:00+08:00",
+      "phase": "Phase 3.8",
+      "phaseGoal": "延长时间并改为旧图退场/新图淡入",
+      "type": "[AI-GEN]",
+      "task": "把变身动画从 0.5s 的收起弹出，改成 0.84s 的「旧图上浮淡出 → 换图 → 新图淡入」",
+      "description": "MORPH_OUT_MS 170→380、MORPH_IN_MS 330→460；旧图 translateY(-8px)+scale(0.97)+fade，ease-in；新图 translateY(10px→0)+fade，ease-out，去掉 1.025 过冲；修换图时序（fill 压 opacity 0 时换 src，建新动画后再 cancel）；morph-halo 620→900ms。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/style.css"
+      ],
+      "verification": "node .deepworks/tmp/test-renderer.mjs → 242 通过 / 0 失败；e2e：200ms 时旧图 opacity 0.58，1.7s 后新图 opacity 1、rect 240×360、transforming 已摘除，problems: []；measure-morph.js 每 50ms 采样：1.00→0.05(380ms)→换图→0.25→1.00(840ms)，无空窗无回闪。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.8-002",
+      "date": "2026-10-22T21:40:00+08:00",
+      "phase": "Phase 3.8",
+      "phaseGoal": "延长时间并改为旧图退场/新图淡入",
+      "type": "[MANUAL]",
+      "task": "人工确认动画节奏与观感",
+      "description": "按 PLAN Phase 3.8 的 5 步自查：旧图是否明显先退场、新图是否淡入、总时长是否像一次深呼吸（0.8–0.9s）、连点是否只生效最后一次、减弱动态效果是否直接换图。",
+      "files": [
+        "outputs/phase3.8-transform-strip.png",
+        "outputs/phase3-guide.md"
+      ],
+      "verification": "人工确认并签字（FACTS 表 [MANUAL] 行）",
+      "commit": "",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.9-001",
+      "date": "2026-10-22T22:05:00+08:00",
+      "phase": "Phase 3.9",
+      "phaseGoal": "替换正式人设",
+      "type": "[AI-GEN]",
+      "task": "把 SYSTEM_PROMPT 换成用户提供的鲸鱼娘人设，逐字不改",
+      "description": "SYSTEM_PROMPT 由占位版（猫耳女仆）替换为 751 字正式人设，保留【核心性格】【对话风格】【场景反应示例】分段与空行；深度档尾注保持不变；测试新增 5 条人设哨兵。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/DECISIONS.md",
+        "prompt-pet/DEV_LOG.md",
+        "outputs/phase3-guide.md"
+      ],
+      "verification": "node .deepworks/tmp/test-renderer.mjs → 247 通过 / 0 失败；e2e problems: []; 打印 SYSTEM_PROMPT 与需求原文逐行一致（751 字 / 21 行）。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.10-001",
+      "date": "2026-10-22T23:10:00+08:00",
+      "phase": "Phase 3.10",
+      "phaseGoal": "修复输入法候选词被窗口遮挡",
+      "type": "[AI-GEN]",
+      "task": "输入框聚焦时临时降低窗口层级，让 IME 候选词面板可见",
+      "description": "定位为 alwaysOnTop 'screen-saver' 遮挡系统候选词面板；新增 pet:set-ime-friendly IPC（focus 降级 / blur 恢复 / 失焦兜底），显式 focusable: true，气泡底部 padding 12→16 并声明 overflow: visible。",
+      "files": [
+        "prompt-pet/src/main.js",
+        "prompt-pet/src/preload.js",
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/style.css",
+        "prompt-pet/DECISIONS.md",
+        "prompt-pet/DEV_LOG.md",
+        "outputs/phase3-guide.md"
+      ],
+      "verification": "单测 255 通过 / 0 失败；e2e ime.whileFocused.alwaysOnTop=false、ime.whileBlurred.alwaysOnTop=true、problems: []。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.11-001",
+      "date": "2026-10-22T23:40:00+08:00",
+      "phase": "Phase 3.11",
+      "phaseGoal": "气泡标题改名",
+      "type": "[AI-GEN]",
+      "task": "把对话框标题 DeepSeek 改为「吃白饭的大肥鱼」",
+      "description": "index.html 默认文本与 renderer.js setPanel() 复位值同步替换，CSS 未动；测试断言同步。",
+      "files": [
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/DEV_LOG.md"
+      ],
+      "verification": "单测 255 通过 / 0 失败；e2e title=吃白饭的大肥鱼、problems: []；截图 outputs/phase3.11-title.png 无溢出。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.12-001",
+      "date": "2026-10-22T23:59:00+08:00",
+      "phase": "Phase 3.12",
+      "phaseGoal": "本地对话记忆 + 好感度",
+      "type": "[AI-GEN]",
+      "task": "把最近 5 轮对话注入请求，并让好感度随成功对话增长",
+      "description": "chat_history 持久化 {role,content}，本地 40 条 / 注入 10 条；favor 初始 50、每成功一轮 +1、以系统隐藏设定拼进 system（人设之后）；设置页新增记忆状态行与「清空聊天记忆」（只清记录、保留好感度）。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/DECISIONS.md",
+        "prompt-pet/DEV_LOG.md",
+        "outputs/phase3-guide.md"
+      ],
+      "verification": "单测 291 通过 / 0 失败；e2e memory.msgCounts=[2,4,6]、favorInjected=[50,51,52]、favorStored=53、清空后 history=0 且 favor=53、problems: []。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.12-002",
+      "date": "2026-10-23T00:20:00+08:00",
+      "phase": "Phase 3.12",
+      "phaseGoal": "边缘吸附 + 系统托盘",
+      "type": "[AI-GEN]",
+      "task": "拖拽松手贴边，以及托盘显示/隐藏与退出",
+      "description": "snapToNearestEdge() 在 mouseup 且 wasDrag 时生效（<30px、260ms CSS 过渡、reduced-motion 直贴）；main.js 新增 createTray()/togglePetWindow()，图标 src/assets/icon.png 缩到 18×18，隐藏前关 IME 友好模式并保留后台窗口，before-quit 销毁托盘。",
+      "files": [
+        "prompt-pet/src/main.js",
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/assets/icon.png",
+        "prompt-pet/DECISIONS.md",
+        "prompt-pet/DEV_LOG.md",
+        "outputs/phase3-guide.md"
+      ],
+      "verification": "单测 291 通过 / 0 失败（snapToZero / snapIgnoresFarAway）；e2e 日志出现「托盘已就绪」，problems: []；ime 探针仍为 false / true。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.12-003",
+      "date": "2026-10-22T23:30:00+08:00",
+      "phase": "Phase 3.12",
+      "phaseGoal": "立绘尺寸微调",
+      "type": "[AI-GEN]",
+      "task": "按用户反馈缩小标准与极致两档立绘",
+      "description": "DEPTHS.high 210×280→190×250，DEPTHS.max 240×360→210×315；轻量 192×192 不变。画框锚点仍为脚底中点，命中框、投影、气泡尾巴偏移自动跟随；同步设置页文案与注释。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DEV_LOG.md",
+        "outputs/phase3-guide.md",
+        "outputs/phase3.12-sprite-sizes.png"
+      ],
+      "verification": "单测 291 通过 / 0 失败；e2e rect 210×315、rendered 231×347、hitTest 未出屏、problems: []；三档并排对比图核对。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.13-001",
+      "date": "2026-10-23T01:10:00+08:00",
+      "phase": "Phase 3.13",
+      "phaseGoal": "好感度养成游戏化",
+      "type": "[AI-GEN]",
+      "task": "隐藏数值 + 讨好词 +10 / 日常 -1 / 四档语气联动",
+      "description": "删除 UI 上的好感度数字与相关文案；新增 FAVOR_BOOST_WORDS（白米饭/红烧肉/大肥鱼真棒/辛苦了/投喂），发送前命中 +10（不叠加），未命中 -1，clamp 0–100；favorTier() 四档（<30/30–59/60–84/≥85）注入 system 并禁止模型暴露数值；删除旧的每轮 +1。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/index.html",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DECISIONS.md",
+        "prompt-pet/DEV_LOG.md",
+        "outputs/phase3-guide.md",
+        "outputs/phase3.13-settings.png"
+      ],
+      "verification": "单测 315 通过 / 0 失败（新增场景 K）；e2e favorInjected [49,48,47]、favorStored 47、statusText「记忆 6 条」、清空后 favor 保持、problems: []。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.14-001",
+      "date": "2026-10-23T12:00:00+08:00",
+      "phase": "Phase 3.14",
+      "phaseGoal": "右键查询 DeepSeek 账户余额",
+      "type": "[AI-GEN]",
+      "task": "复用气泡新增钱包视图；contextmenu 拦截 + GET /user/balance + 三分支文案",
+      "description": "#pet 绑定 contextmenu 并 preventDefault/stopPropagation；#bubble 新增 #view-wallet，#wallet-text 先显示「（翻找钱包中...）」；fetchBalance() 读取 balance_infos[0].total_balance/currency（兼容顶层字段），10 秒超时；成功/无 key/报错三种文案，无自动关闭定时器；左键切回聊天，关气泡 resetWalletView()；balanceSeq 防连点串台；查询不写记忆、不动好感度。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DECISIONS.md",
+        "prompt-pet/DEV_LOG.md",
+        "outputs/phase3-guide.md",
+        "outputs/phase3.14-wallet.png"
+      ],
+      "verification": "单测 362 通过 / 0 失败（新增场景 L）；e2e defaultPrevented true、loadingText「（翻找钱包中...）」、resultText 含 ¥110.00、GET + Bearer、左键后 inputFocused true、无 key newCalls 0、problems: []；截图核对排版。",
+      "commit": "(no git repo)",
+      "status": "done"
+    }
+  ]
+}

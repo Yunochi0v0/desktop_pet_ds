@@ -1,0 +1,19 @@
+# [AI-GEN] 依赖与构建产物
+node_modules/
+dist/
+out/
+release/
+
+# 日志与本地临时文件
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.vscode/
+.idea/
+
+# 环境变量（禁止提交密钥）
+.env
+.env.local
