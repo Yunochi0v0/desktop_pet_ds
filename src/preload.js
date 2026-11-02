@@ -5,7 +5,7 @@
 // 为什么需要它？
 //   contextIsolation: true + nodeIntegration: false 之后，renderer.js 里没有
 //   require，也拿不到 ipcRenderer。preload 在两者之间开一道受控的小门，
-//   只暴露我们明确允许的 7 个方法（白名单），其他能力一律不给。
+//   只暴露明确允许的方法（白名单），其他能力一律不给。
 //
 //   ⚠️ Phase 3 没有新增「发请求」的通道，是有意的：
 //      DeepSeek 接口实测支持浏览器跨域（预检返回 access-control-allow-origin: null，
@@ -40,6 +40,32 @@ contextBridge.exposeInMainWorld('petAPI', {
    */
   getPetSize() {
     return ipcRenderer.invoke('pet:get-pet-size');
+  },
+
+  /**
+   * [AI-GEN] Phase 3.26：获取「日期 + 实时天气」。
+   * 网络请求在主进程完成，渲染进程只拿到归一化后的数据：
+   *   { ok, date, dateISO, weekday, location, weather: { temperature, windSpeed, condition, kind, ... } }
+   * 失败时 ok=false，天气页显示“天气获取失败”。
+   *
+   * Phase 3.28：options 可选，{ name, latitude, longitude } 指定查询城市；
+   * 不传（或坐标非法）时主进程退回默认城市。
+   * @param {{ name?: string, latitude?: number, longitude?: number }} [options]
+   * @returns {Promise<object>}
+   */
+  getWeatherAndDate(options) {
+    return ipcRenderer.invoke('get-weather-and-date', options);
+  },
+
+  /**
+   * [AI-GEN] Phase 3.28：把城市名检索成经纬度候选。
+   * 数据源是 Open-Meteo 的免费地名接口，主进程代发，渲染进程不直接联网。
+   *   { ok, query, results: [{ id, name, admin1, country, latitude, longitude, label }] }
+   * @param {string} query 用户输入的城市名，例如「杭州」
+   * @returns {Promise<object>}
+   */
+  searchLocation(query) {
+    return ipcRenderer.invoke('search-location', query);
   },
 
   /**
@@ -89,5 +115,88 @@ contextBridge.exposeInMainWorld('petAPI', {
    */
   reportReady(info) {
     ipcRenderer.send('pet:renderer-ready', info);
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 3.18：番茄钟
+  //
+  // 计时器住主进程（渲染进程会被系统节流），这里只做「问状态 / 下命令 / 收推送」。
+  // 两条推送都是**只把数据交出去**，不暴露 event 对象 —— 渲染进程拿不到
+  // sender，也就没法反向操作其它窗口。
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 开始一轮计时。
+   * @param {'focusing'|'resting'} phase
+   * @returns {Promise<{phase: string, remainingMs: number, totalMs: number}>}
+   */
+  pomodoroStart(phase) {
+    return ipcRenderer.invoke(
+      'pomodoro:start',
+      phase === 'resting' ? 'resting' : 'focusing'
+    );
+  },
+
+  /** 停止计时，回到 idle */
+  pomodoroStop() {
+    return ipcRenderer.invoke('pomodoro:stop');
+  },
+
+  /** 当前状态（窗口重开 / 首屏兜底用） */
+  pomodoroState() {
+    return ipcRenderer.invoke('pomodoro:state');
+  },
+
+  /**
+   * 每秒一次的剩余时间推送。
+   * @param {(snapshot: {phase: string, remainingMs: number, totalMs: number}) => void} handler
+   * @returns {() => void} 取消订阅
+   */
+  onPomodoroTick(handler) {
+    const listener = (_event, snapshot) => {
+      if (typeof handler === 'function') handler(snapshot);
+    };
+    ipcRenderer.on('pomodoro:tick', listener);
+    return () => ipcRenderer.removeListener('pomodoro:tick', listener);
+  },
+
+  /**
+   * 一轮结束时推送一次。
+   * @param {(payload: {finished: string, next: string, phase: string, remainingMs: number, totalMs: number}) => void} handler
+   * @returns {() => void} 取消订阅
+   */
+  onPomodoroDone(handler) {
+    const listener = (_event, payload) => {
+      if (typeof handler === 'function') handler(payload);
+    };
+    ipcRenderer.on('pomodoro:done', listener);
+    return () => ipcRenderer.removeListener('pomodoro:done', listener);
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 3.21：剪贴板监听
+  //   开关在主进程（它才拿得到系统剪贴板），渲染进程只说「开 / 关」。
+  //   命中时主进程推一条 { kind, text, at }，渲染进程决定说什么。
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 开 / 关剪贴板轮询。关掉后主进程立刻停表，不再读剪贴板。
+   * @param {boolean} on
+   */
+  setClipboardWatch(on) {
+    ipcRenderer.send('clipboard:set-watch', on === true);
+  },
+
+  /**
+   * 剪贴板命中推送。
+   * @param {(payload: {kind: 'error'|'code', text: string, at: number}) => void} handler
+   * @returns {() => void} 取消订阅
+   */
+  onClipboardHint(handler) {
+    const listener = (_event, payload) => {
+      if (typeof handler === 'function') handler(payload);
+    };
+    ipcRenderer.on('clipboard:hint', listener);
+    return () => ipcRenderer.removeListener('clipboard:hint', listener);
   },
 });

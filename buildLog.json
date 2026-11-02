@@ -559,6 +559,407 @@
       "verification": "单测 362 通过 / 0 失败（新增场景 L）；e2e defaultPrevented true、loadingText「（翻找钱包中...）」、resultText 含 ¥110.00、GET + Bearer、左键后 inputFocused true、无 key newCalls 0、problems: []；截图核对排版。",
       "commit": "(no git repo)",
       "status": "done"
+    },
+    {
+      "id": "phase3.15-001",
+      "date": "2026-10-23T14:00:00+08:00",
+      "phase": "Phase 3.15",
+      "phaseGoal": "拖拽松手后按最后两帧速度惯性滑行，撞边缘反弹并 Q 弹挤压",
+      "type": "[AI-GEN]",
+      "task": "甩尾速度采样 + rAF 摩擦滑行 + 撞墙 -0.55 反弹 + .pet-core 压扁回弹",
+      "description": "拖拽中按 performance.now() 采样最后 6 个点，松手用最后两帧算 px/ms；dt<4ms 并帧、最后采样>120ms 判 0、矢量限速 3.0。stepFling 用 rAF 驱动，0.915^(dt/16.667) 指数衰减，dt 上限 48ms；撞墙位置夹紧 + 法向速度 *= -0.55，<0.04 归零。挤压动画挂 .pet-core（#pet 的 transform 归 translate3d 独占）：impact-x 为横向 scale(0.88,1.12)，impact-y 为需求指定的 scale(1.1,0.9)，460ms 带过冲回弹 + 80ms 冷却 + 强制重排可重播。惯性优先于原吸附，startFling 返回 false 才 snapToNearestEdge；滑行中按住 / 失焦 / 中断立即 stopFling；prefers-reduced-motion 不甩不挤压。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/style.css",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/buildLog.json",
+        ".deepworks/tmp/test-renderer.mjs",
+        ".deepworks/tmp/e2e-fling.js"
+      ],
+      "verification": "单测 402 通过 / 0 失败（新增场景 M：速度采样 / 限速 / 摩擦 0.915 / 撞右墙 -1.007 / impact-x / 撞底边 impact-y / 自然停下 / 停顿与慢速不甩 / reduced-motion 不甩 / 中途抓住停止）；真机探针 flingingAfterUp true、maxX 1320（夹紧）、impactX true、settled.x 1038、1.2s 后 flingingLater false、problems: []。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "date": "2026-10-23T15:10:00+08:00",
+      "phase": "Phase 3.16",
+      "phaseGoal": "四张基础表情（pot/idle/sad/sleep）+ 睡眠/唤醒/甩飞状态机",
+      "id": "phase3.16-001",
+      "type": "[AI-GEN]",
+      "task": "表情抠图 + PET_FACES 映射 + setPetImage 预解码 + updateBaseState 优先级 + 60s 睡眠 / 戳醒 / 甩飞强制 pot",
+      "description": "idle/sad/sleep 三张白底 JPG 边缘 flood fill 去背（保留抱枕/Z 字气泡/水珠/聊天泡、清掉右下角水印），pot 由 pet-high.png 统一，四张 384×384、内容长边 360、底对齐。PET_FACES 与 DEPTHS 拆权：档位只改画框，表情只改图。setPetImage 做同图判重 + 预解码 + imageSeq 自增校验，避免闪白与连点错图。updateBaseState 优先级：airborne→pot、sleeping→sleep、favor<20→sad、<40→idle、≥40→pot。60 秒无点击/拖拽/发消息自动入睡，拖拽中/等回答/空中不睡；mousedown 立即唤醒，单击松手弹气泡说「啧，干嘛吵醒我？」并 5 秒冷却。startFling 成功强制 pot，endFling 落地恢复。CSS 换表情 180ms 只动 opacity，睡眠挂 .pet-core 4.8s 呼吸，reduced-motion 下均关闭。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/assets/pet-pot.png",
+        "prompt-pet/src/assets/pet-idle.png",
+        "prompt-pet/src/assets/pet-sad.png",
+        "prompt-pet/src/assets/pet-sleep.png",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/buildLog.json",
+        ".deepworks/tmp/cutout.py",
+        ".deepworks/tmp/test-renderer.mjs",
+        ".deepworks/tmp/e2e-faces.js"
+      ],
+      "verification": "单测 440 通过 / 0 失败（新增场景 N：40/39/20/19 阈值、同图不重复解码、60s 入睡、睡眠优先于好感、戳醒台词与冷却、甩飞 pot 与落地恢复、忙碌时不睡）；真机探针四张图 naturalSize 384×384、complete true、渲染尺寸一致 192×192、sleep-breathe 生效、戳醒台词入气泡、problems: []；截图见 .deepworks/tmp/faces/。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "date": "2026-10-23T15:10:00+08:00",
+      "phase": "Phase 3.16",
+      "phaseGoal": "四张基础表情（pot/idle/sad/sleep）+ 睡眠/唤醒/甩飞状态机",
+      "id": "phase3.16-002",
+      "type": "[MANUAL]",
+      "task": "人工验收四张表情与状态机手感",
+      "description": "你需要亲手确认：① 开屏是铁盆图；② 好感降到 30 附近变死鱼眼、降到 19 变含泪；③ 放置 60 秒抱着枕头睡着且呼吸变慢；④ 点一下立刻醒并说「啧，干嘛吵醒我？」，连点不刷屏；⑤ 用力甩出去时机中变铁盆、落地恢复；⑥ 切思考深度只改画框大小，表情不被档位改掉。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/style.css"
+      ],
+      "verification": "人工验收：npm start 后按 PLAN.md「Phase 3.16 · How the student will check it」1–6 步逐条确认。",
+      "commit": "(no git repo)",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.16-003",
+      "date": "2026-10-23T16:05:00+08:00",
+      "phase": "Phase 3.16",
+      "phaseGoal": "四张基础表情（pot/idle/sad/sleep）+ 睡眠/唤醒/甩飞状态机（仅标准档）",
+      "type": "[AI-GEN]",
+      "task": "把表情包收敛到标准档：轻量 / 极致恢复原立绘与原行为",
+      "description": "新增 FACE_PACK_DEPTH='high'、usesFacePack()、spriteSrcForDepth()、currentSpriteSrc()，把「该显示哪张图」收敛为单一函数：标准档走 PET_FACES，轻量/极致走 DEPTHS[].src。applyFace 只在标准档挂 sleeping 类与换图淡入；checkSleepDeadline 在非标准档直接返回（无自动睡眠、无「干嘛吵醒我」台词）；applyDepth 的 morph/直切与 runMorph 暗场写图统一改用 currentSpriteSrc()，轻量/极致换档行为与 Phase 3.15 一致。index.html 首帧 src 恢复 assets/pet-low.png。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/index.html",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/buildLog.json",
+        ".deepworks/tmp/test-renderer.mjs",
+        ".deepworks/tmp/e2e-faces.js"
+      ],
+      "verification": "单测 451 通过 / 0 失败（新增：轻量档好感 0 不换图、不入睡、不挂 sleeping 类、甩飞不换 pot；极致仍是 pet-max；切回标准立刻显示当前表情）；真机探针 checks 全 true（含 lowKeepsOwnArt / maxKeepsOwnArt / backToHighUsesFace / sameRenderSizeAcrossDepth），problems: []；e2e-electron problems: []。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.17-001",
+      "date": "2026-10-23T17:30:00+08:00",
+      "phase": "Phase 3.17",
+      "phaseGoal": "极致档（max）的九头身表情包：抱枕睡姿 / 死鱼眼 / 含泪 + 常态 pet-max",
+      "type": "[AI-GEN]",
+      "task": "生成并后处理三张九头身差分（去水印 + 抠白底 + 与 pet-max 同尺度）",
+      "description": "以 prompt-pet/src/assets/pet-max.png 为参考生成三张 1024x1536 差分（抱枕抱膝睡、死鱼眼 + 省略号、含泪 + 汗滴）。后处理脚本 .deepworks/tmp/maxpack.py：四边 flood fill 近中性白（NEUTRAL_MIN=234 / SAT_MAX=14 / 0.8px 羽化）、右下角 DeepWorks AI 水印整块清空、连通块面积 <160 的孤立碎块剔除。尺度以 pet-max 的脸宽 76px 为基准：站姿按内容高度 1108 归一，坐姿按脸宽对齐后取 h88（比严格同头大 16%，避免切表情时突然变小）。产物落到 prompt-pet/src/assets/pet-max-idle.png / pet-max-sad.png / pet-max-sleep.png。",
+      "files": [
+        "prompt-pet/src/assets/pet-max-idle.png",
+        "prompt-pet/src/assets/pet-max-sad.png",
+        "prompt-pet/src/assets/pet-max-sleep.png",
+        ".deepworks/tmp/maxpack.py",
+        "outputs/imagegen/pet-max-sleep.png",
+        "outputs/imagegen/pet-max-speechless.png",
+        "outputs/imagegen/pet-max-cry.png"
+      ],
+      "verification": "四张图在深色底上逐块复核边缘：抱枕 / 围裙 / 白丝袜 / 白色褶边均未被 flood fill 吃掉，水印彻底清除；画布 aspect 0.37-0.46 均小于画框 0.667，contain 下同为高度受限。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.17-002",
+      "date": "2026-10-23T17:45:00+08:00",
+      "phase": "Phase 3.17",
+      "phaseGoal": "极致档（max）的九头身表情包：抱枕睡姿 / 死鱼眼 / 含泪 + 常态 pet-max",
+      "type": "[AI-GEN]",
+      "task": "把 max 表情包接进状态机（FRAME_PACKS 按档位取包）",
+      "description": "新增 PET_MAX_FACES（pot 复用 pet-max.png）与 FACE_PACKS = { high: PET_FACES, max: PET_MAX_FACES }；spriteSrcForFace(face, depth) 改为按档位取包（合法性仍以 PET_FACES 的键集合为准）；usesFacePack(depth) 改为查表；FACE_PACK_DEPTH 从 'high' 改为 ['high','max']。睡眠 / 好感度 / 甩飞 / 唤醒既有逻辑未改，天然对 max 生效；轻量档仍未进表，行为与 Phase 3.16 完全一致。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/buildLog.json",
+        ".deepworks/tmp/test-renderer.mjs",
+        ".deepworks/tmp/e2e-faces.js"
+      ],
+      "verification": "单测 465 通过 / 0 失败（新增：极致档四表情映射、极致 60 秒入睡、四张文件存在）；e2e-faces 19 项 checks 全 true（含 maxUsesOwnPack / maxIdleAt30 / maxSadAt10 / maxSleepAt61s / maxSpritesLoaded / maxSameRenderBox），problems: []；e2e-electron 与 e2e-fling 无回归。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.17-003",
+      "date": "2026-10-23T17:50:00+08:00",
+      "phase": "Phase 3.17",
+      "phaseGoal": "极致档（max）的九头身表情包：抱枕睡姿 / 死鱼眼 / 含泪 + 常态 pet-max",
+      "type": "[MANUAL]",
+      "task": "人工验收：切到极致档走一遍四个表情",
+      "description": "npm start → 设置里把思考深度切到「极致」→ 连发消息把好感降到 30（死鱼眼）/ 19（含泪）→ 放着不动 60 秒（抱枕睡姿 + Z 字 + 慢呼吸）→ 点一下（醒 + 「啧，干嘛吵醒我？」）→ 切回轻量确认仍是 pet-low 且不睡。",
+      "files": [
+        "prompt-pet/src/assets/pet-max-idle.png",
+        "prompt-pet/src/assets/pet-max-sad.png",
+        "prompt-pet/src/assets/pet-max-sleep.png"
+      ],
+      "verification": "按 PLAN.md「Phase 3.17 · How the student will check it」1-6 步逐条确认。",
+      "commit": "(no git repo)",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.17-004",
+      "date": "2026-10-23T18:20:00+08:00",
+      "phase": "Phase 3.17",
+      "phaseGoal": "极致档（max）的九头身表情包",
+      "type": "[AI-GEN]",
+      "task": "备用素材：「努力敲代码」差分（标准 Q 版 + 极致九头身），与各自立绘同尺度、已抠图",
+      "description": "以 pet-idle.png / pet-max.png 为参考各生成一张敲代码差分（抱笔记本、屏幕蓝光、专注皱眉 + 汗滴、</> 符号）。标准档按内容长边 360 / 底对齐 372 落到 384x384（与 pet-idle 顶底一致）；极致档按内容高度 1108 落到 529x1120，脸部肤色块宽 76px 与 pet-max 相同。极致档额外做 strip_outline()：只剥离与透明背景连通的白色贴纸描边（阈值 205/28），避免深色背景上多出一圈白框。试错版本（头身比 8.5 头身、去描边后头过大）移至 .deepworks/tmp/code-variants/。",
+      "files": [
+        "outputs/imagegen/code-cut/pet-code.png",
+        "outputs/imagegen/code-cut/pet-max-code.png",
+        "outputs/imagegen/code-cut/_preview-light.png",
+        "outputs/imagegen/code-cut/_preview-dark.png",
+        "outputs/imagegen/pet-idle-code.png",
+        "outputs/imagegen/pet-max-code.png",
+        ".deepworks/tmp/qpack.py",
+        ".deepworks/tmp/maxcode.py"
+      ],
+      "verification": "标准档 bbox (49,12)-(335,372) 与 pet-idle (38,12)-(346,372) 顶底一致；极致档脸宽 76 = pet-max，无内部透明洞；浅底 / 深底预览逐张目视确认无白边残留、白裙白袜未被误伤。未接入代码，单测与 e2e 不受影响。",
+      "commit": "(no git repo)",
+      "status": "done"
+    },
+    {
+      "id": "phase3.18-001",
+      "date": "2026-10-23T19:40:00+08:00",
+      "phase": "Phase 3.18",
+      "phaseGoal": "番茄钟（专注 / 休息 + 头顶倒计时）",
+      "type": "[AI-GEN]",
+      "task": "主进程：番茄钟状态机 + 防休眠 + IPC",
+      "description": "新增 pomo 状态机（idle → focusing → resting → idle），用绝对 endsAt 计算剩余时间（后台节流 / 系统睡眠后自愈）。focusing 期间 powerSaveBlocker.start(\"prevent-app-suspension\")，resting / stop / will-quit 释放。新增 pomodoro:start|stop|state 三个 IPC，全部 isTrustedSender 校验，脏值回 idle 快照。POMO_FOCUS_MS / POMO_REST_MS 环境变量可覆盖时长（clamp 1s–180min），供真机自检压缩到 3 秒。",
+      "files": [
+        "prompt-pet/src/main.js",
+        "prompt-pet/src/preload.js"
+      ],
+      "verification": "node --check 通过；e2e-pomodoro.js 真机跑完整轮（专注 3s → 休息 2s → idle），problems: []。",
+      "status": "done"
+    },
+    {
+      "id": "phase3.18-002",
+      "date": "2026-10-23T19:45:00+08:00",
+      "phase": "Phase 3.18",
+      "phaseGoal": "番茄钟（专注 / 休息 + 头顶倒计时）",
+      "type": "[AI-GEN]",
+      "task": "渲染进程：表情接入 + 头顶胶囊 + 右键菜单 + 归零大对话框",
+      "description": "state.pomodoro 接入 updateBaseState()（airborne 之后、睡眠之前：focusing→code、resting→sleep），checkSleepDeadline() 在计时期间跳过。applyPomodoroSnapshot() 仅在 phase 变化时重算表情。新增 #pomo-chip（role=timer、aria-live=off、transform 定位、气泡在上方时让到脚下并按 scale(1.1) 溢出量再退 5% 画框高）。右键改为 #pet-menu 五项（专注/休息/停止/查余额/设置），原钱包逻辑抽成 refreshBalance()；菜单计入命中检测，Escape/点外部/失焦收起。归零复用 #bubble 的 .bubble--big（356px、15px、8 秒复位）。轻量档因 usesFacePack(low)=false + setPetImage 判重，<img src> 零变化。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/assets/pet-code.png",
+        "prompt-pet/src/assets/pet-max-code.png"
+      ],
+      "verification": "单测 520 通过 / 0 失败（新增 3.18 场景：三档表情、胶囊文案与显隐、归零台词、轻量档三次“图完全不变”）；e2e-pomodoro.js 29/29 checks，截图 .deepworks/tmp/pomo/01–08 目视通过（胶囊不压角色、不遮气泡）。",
+      "status": "done"
+    },
+    {
+      "id": "phase3.18-003",
+      "date": "2026-10-23T19:50:00+08:00",
+      "phase": "Phase 3.18",
+      "phaseGoal": "番茄钟（专注 / 休息 + 头顶倒计时）",
+      "type": "[AI-GEN]",
+      "task": "回归修复：右键改菜单后钱包用例与 vm mock 适配",
+      "description": "Phase 3.14 的“右键查余额”用例改为“右键 → 菜单出现 → 点查余额 → 钱包”，并补菜单项数量、点完自动收起断言；e2e-electron.js 的钱包段（含未配 key）同步改为走菜单。test-renderer.mjs 的 mock 元素补 pomo-chip / pomo-chip-text / pet-menu，petAPI 补 5 个番茄钟方法；renderer 侧对 querySelector / contains 加能力检测，避免 vm 环境抛错。",
+      "files": [
+        ".deepworks/tmp/test-renderer.mjs",
+        ".deepworks/tmp/e2e-electron.js",
+        "prompt-pet/src/renderer.js"
+      ],
+      "verification": "e2e-electron.js problems: []，wallet.menuShown=true / menuItems=5 / menuClosedAfterPick=true，余额与无 key 文案不变；e2e-fling.js、e2e-faces.js 无回归。",
+      "status": "done"
+    },
+    {
+      "id": "phase3.18-004",
+      "date": "2026-10-23T19:55:00+08:00",
+      "phase": "Phase 3.18",
+      "phaseGoal": "番茄钟（专注 / 休息 + 头顶倒计时）",
+      "type": "[MANUAL]",
+      "task": "人工验收：三档各开一次番茄钟，重点确认轻量档不换图",
+      "description": "1) 轻量档右键 → 开启专注：头顶出现“⏳ 专注中 25:00”并在走秒，角色图片必须一动不动（可开 DevTools 盯 #pet-sprite 的 src）。2) 左键打开气泡：胶囊自动让到脚下，不遮挡对话、不压角色。3) 切标准 / 极致再开专注：分别是 Q 版 / 九头身敲代码差分。4) 等归零：大号对话框“（伸懒腰） 时间到啦！笨蛋，快起来活动一下！”，自动进休息并换睡姿；休息归零“（合上笔记本） 休息够了吧？该回来继续干活了。”。5) 右键“停止计时”立刻回日常表情。6) 顺手回归：拖拽 / 甩飞 / 吸附 / 穿透 / 托盘 / 查余额 / 设置。",
+      "files": [
+        "prompt-pet/"
+      ],
+      "verification": "由本人按上述 6 步操作确认；任何一步不符合预期记入 ERROR_LOG.md。",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.19-001",
+      "date": "2026-10-23T20:30:00+08:00",
+      "phase": "Phase 3.19",
+      "phaseGoal": "极致档被击飞差分（铁盆 + 慌张）",
+      "type": "[AI-GEN]",
+      "task": "生成并接入 pet-max-panic.png",
+      "description": "以 pet-max.png 为参考做 image edit，产出「不锈钢盆倒扣、双手扶盆沿、瞪眼张嘴脸红 + 汗滴」的九头身差分；两版候选中选 B（后仰、单脚离地、更像被扔出去）。后处理用 maxpack.py auto：白底 flood-fill 抠图 + 清除右下角水印 + 内容高度对齐 1108px，最终 521x1108 RGBA。代码侧新增 PET_MAX_FACES.panic / FACE_PANIC，airborne 分支由 FACE_POT 改为 FACE_PANIC；靠 applyFace() 的查表回落让标准档继续显示 pet-pot.png、轻量档不换图，不需要写档位分支。",
+      "files": [
+        "prompt-pet/src/assets/pet-max-panic.png",
+        "prompt-pet/src/renderer.js",
+        "outputs/imagegen/pet-max-panic-b.png",
+        "outputs/imagegen/pet-max-panic-b-cut.png"
+      ],
+      "verification": "单测 538 通过 / 0 失败（新增极致档甩飞→panic、落地回 idle、睡眠中被甩、轻量档零变化、PNG 头部校验）；e2e-panic.js 17/17 checks、problems: []，截图 .deepworks/tmp/panic/01–04；标准档仍 pet-pot.png。",
+      "status": "done"
+    },
+    {
+      "id": "phase3.19-002",
+      "date": "2026-10-23T20:35:00+08:00",
+      "phase": "Phase 3.19",
+      "phaseGoal": "极致档被击飞差分（铁盆 + 慌张）",
+      "type": "[MANUAL]",
+      "task": "人工验收：极致档甩飞是否换成铁盆慌张图",
+      "description": "1) 右键 → 设置 → 思考深度切到「极致」。2) 抓住角色快速拖动后松手甩出去。3) 离手瞬间应为铁盆扣头、双手扶盆沿、瞪眼张嘴脸红 + 汗滴的差分；落地立刻恢复原表情。4) 切标准档再甩：仍为 Q 版 pet-pot.png。5) 切轻量档再甩：角色图片完全不变。6) 顺手回归拖拽 / 吸附 / 气泡 / 番茄钟 / 托盘。",
+      "files": [
+        "prompt-pet/"
+      ],
+      "verification": "由本人按上述 6 步操作确认；不符预期记入 ERROR_LOG.md。",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.20-001",
+      "date": "2026-10-23T21:40:00+08:00",
+      "phase": "Phase 3.20",
+      "phaseGoal": "设置面板重排（卡片化 + 层级）",
+      "type": "[AI-GEN]",
+      "task": "index.html / style.css 重构设置面板；renderer.js 三处文案精简",
+      "description": "把「API Key / 思考深度 / 记忆 / 清除 / 保存」平铺一列改成两张卡片（API 与模型、记忆管理）+ 右下角唯一主按钮。卡片底色 color-mix(var(--ink) 4%) 跟随主题变量；卡片间 10px、卡片内 12px、字段内 6px 三级间距；输入框与下拉框统一 36px 高、10px 圆角、白底细边。Key 提示改为「已保存：sk-12…6f1b（输入新 Key 可覆盖）」；深度状态改为「当前模型支持推理过程展示 / 直答模式，不展示推理过程」，删掉与下拉框重复的档位·模型·画框信息；记忆条数与「最近 5 轮会带给模型」合并到标题右侧。左下角「清除」按钮改为提示行右侧文字链（功能保留）；「清空聊天记忆」移入记忆卡片，红色描边 + 浅红底；「保存」改名「保存设置」并独占右下角。所有 id 未变，功能逻辑零改动。",
+      "files": [
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/renderer.js",
+        ".deepworks/tmp/shot-settings-v2.js",
+        ".deepworks/tmp/work/settings-no-key.png",
+        ".deepworks/tmp/work/settings-with-key.png"
+      ],
+      "verification": "单测 538 通过 / 0 失败（仅 2 条断言跟随文案更新）；e2e-electron / e2e-pomodoro 29-29 / e2e-faces / e2e-fling / e2e-panic 17-17 全部 problems: []；真机截图 settings-no-key.png（气泡 454px 高，一屏放下）与 settings-with-key.png（记忆 12 条的最长 meta 不换行、不挤标题）。",
+      "status": "done"
+    },
+    {
+      "id": "phase3.20-002",
+      "date": "2026-10-23T21:40:00+08:00",
+      "phase": "Phase 3.20",
+      "phaseGoal": "设置面板重排（卡片化 + 层级）",
+      "type": "[MANUAL]",
+      "task": "人工验收：设置页排版是否清爽、旧功能是否都还在",
+      "description": "1) 右键 → 设置，确认是两张浅灰卡片：API 与模型 / 记忆管理。2) Key 提示为小号灰字，保存过 key 时显示「已保存：sk-…」，右侧只有一条「清除」文字链。3) 思考深度下方只有一句推理说明，不再有「当前：xxx · 192×192」。4) 记忆卡片标题右侧为「记忆 N 条 · 最近 5 轮会带给模型」，下方红描边「清空聊天记忆」。5) 右下角只有「保存设置」一个实心按钮，点击仍能保存 key 并回聊天。6) 回归：切档换立绘 / 聊一句 / 查余额 / 番茄钟 / 拖拽 / 吸附。",
+      "files": [
+        "prompt-pet/"
+      ],
+      "verification": "由本人按上述 6 步操作确认；不符预期记入 ERROR_LOG.md。",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.21-001",
+      "date": "2026-10-23T22:50:00+08:00",
+      "phase": "Phase 3.21",
+      "phaseGoal": "剪贴板吐槽 + 语音播报",
+      "type": "[AI-GEN]",
+      "task": "主进程剪贴板轮询 + 被动吐槽气泡 + 中文女声 TTS + 设置页第三张卡片",
+      "description": "main.js 每 3s 轮询 clipboard.readText()，classifyClipboard() 只分 error（报错关键词）与 code（>500 字且含代码结构），>20000 字忽略；clipFingerprint（kind|length|前 120 字）配 30 条 seen 去重；启动先异步播种避免旧剪贴板误触发；pet:copy-text 写后回读记入 selfWritten。IPC 新增 clipboard:set-watch / clipboard:hint（只传前 2000 字）。preload.js 暴露 setClipboardWatch / onClipboardHint。renderer.js 新增 ROAST_LINES 台词库、showRoast（走 openBubblePassive，不抢焦点，8s 自动收起）、appendMessage 支持 'roast' 角色（.msg--roast，无复制按钮）、speakText / stripMarkdownForSpeech / clipForSpeech（rate 1.12 / pitch 1.28 / 只念前 200 字 / zh-CN 声音优先）、pet_speech 与 pet_clip_roast 两个开关持久化、onSend 回答落地后朗读、init 第 7.8 步订阅 hint。index.html 新增第三张卡片「声音与提醒」并把三卡片包进 .settings-scroll、.settings-actions 移出滚动区。style.css 新增 .settings-row / .settings-scroll / .msg--roast，卡片紧凑化（gap 11 / padding 11px 12px 10px / 控件 31px / actions 5px 0 2px）。fitSettingsHeight() 修正为扣除气泡外壳 chrome（bubbleH - viewH，量不到兜底 72），修掉设置页盖住角色的老 bug。",
+      "files": [
+        "prompt-pet/src/main.js",
+        "prompt-pet/src/preload.js",
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        ".deepworks/tmp/test-renderer.mjs",
+        ".deepworks/tmp/e2e-roast.js",
+        ".deepworks/tmp/shot-settings-v3.js"
+      ],
+      "verification": "单测 node .deepworks/tmp/test-renderer.mjs：582 通过 / 0 失败（新增「场景 K：Phase 3.21」）。真机 e2e-roast.js：37/37 checks，problems: []。回归 e2e-electron / e2e-pomodoro(29/29) / e2e-faces / e2e-fling / e2e-panic(17/17) 串行全绿。设置页几何实测：maxHeight 517px、scroller clientH 466 = scrollH 466、bubble{y:2,h:579}、pet y=595、petOverlap 0。截图 .deepworks/tmp/roast/01…06。",
+      "commit": "",
+      "status": "done"
+    },
+    {
+      "id": "phase3.21-002",
+      "date": "2026-10-23T22:50:00+08:00",
+      "phase": "Phase 3.21",
+      "phaseGoal": "剪贴板吐槽 + 语音播报",
+      "type": "[MANUAL]",
+      "task": "人工验收：吐槽时机/音色是否合适、设置页是否不再遮挡角色",
+      "description": "1) 复制一段报错（如 TypeError: cannot read properties of undefined），不点鼠标，4 秒内她应自己冒出吐槽，且输入框不会弹出抢焦点。2) 复制 600 字以上代码，应换成 code 类台词。3) 同一段内容复制两次只吐槽一次。4) 右键 → 设置 → 声音与提醒 → 剪贴板吐槽「关闭」，再复制报错应完全无反应。5) 语音播报改「开启」，问一句，应听到中文女声念回答（只念开头 200 字、语速略快音调偏高），打字时不被打断。6) 设置页三张卡片一屏看全、保存按钮固定在右下角、角色不被气泡遮挡。7) 回归：番茄钟、拖拽甩飞、三档换立绘、查余额、输入法候选词。",
+      "files": [
+        "prompt-pet/"
+      ],
+      "verification": "由本人按上述 7 步操作确认；音色嫌尖可把 SPEECH_PITCH 1.28 降到 1.15；不符预期记入 ERROR_LOG.md。",
+      "commit": "",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.22-001",
+      "date": "2026-10-23T17:40:00+08:00",
+      "phase": "Phase 3.22",
+      "phaseGoal": "猜拳小游戏（右键入口 + 气泡牌桌 + 好感联动 + 牌局锁菜单）",
+      "type": "[AI-GEN]",
+      "task": "实现纯本地猜拳小游戏：右键菜单入口、气泡内牌桌视图、判定/台词/表情/好感联动、牌局期间锁定菜单、三条退出路径",
+      "description": "index.html 新增 #view-game（比分 + #game-close + #game-moves + #game-line + 三张 data-hand 手牌 + #game-actions 两个收尾按钮），#pet-menu 增加 #pet-menu-note 与 data-action=\"game\" 菜单项。style.css 追加 Phase 3.22 区块：.game* 全套、.game-hands / .game-actions 同 min-height 62px、.game-line 38px（两行）、两处 [hidden] 兜底、.bubble-gear[hidden]、.pet-menu-item:disabled、reduced-motion。renderer.js 新增 state.game 与「Phase 3.22：猜拳」整段（judgeGame / playRound / enterGame / nextGameRound / endGame / resetGameView / lockMenuForGame / bindGameEvents 等），并接入 updateBaseState（airborne > game > pomodoro > sleep/favor）、checkSleepDeadline（牌局中不睡）、closeBubble（resetGameView）、focusPanel、setPanel（第四个面板，隐藏齿轮）、handleEscape、openPetMenu（锁菜单 + 首焦点取 not(:disabled)）、handlePetMenuAction（顶部守卫）、showBigDialog（牌局中只写记录）、bindPhase3Events。判定纯本地，不 fetch、不写 chat_history；好感胜 +3 / 负 -1 / 平 0，夹 0..100。",
+      "files": [
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/buildLog.json"
+      ],
+      "verification": "AI 自测：node --check src/renderer.js 通过；单测 681 通过 / 0 失败（新增场景 L）；真机 e2e-game.js 143/143、problems: []；回归 e2e-pomodoro 29/29（菜单项 5→6）、e2e-roast 37/37、e2e-electron / e2e-faces / e2e-fling / e2e-panic exit 0；截图 .deepworks/tmp/game/01-board.png、02-result.png、03-menu-locked.png。",
+      "commit": "feat(phase3.22): 猜拳小游戏（牌桌视图 + 判定台词 + 好感联动 + 牌局锁菜单）",
+      "status": "done"
+    },
+    {
+      "id": "phase3.22-002",
+      "date": "2026-10-23T17:40:00+08:00",
+      "phase": "Phase 3.22",
+      "phaseGoal": "猜拳小游戏（右键入口 + 气泡牌桌 + 好感联动 + 牌局锁菜单）",
+      "type": "[MANUAL]",
+      "task": "人工验收猜拳小游戏",
+      "description": "需要你本人确认四件事：① 右键 →「✊ 跟大肥鱼猜拳」进入牌桌，点手牌立刻出结果；② 三种结果的台词 / 表情 / 比分 / 好感变化符合预期（胜 +3 不服气、负 -1 得意、平 0 死鱼眼）；③ 牌局中右键菜单除「停止计时」全部置灰，番茄钟在跑时到点提醒不会顶掉牌桌；④ ESC / ✕ / 【不玩了】/ 点桌宠 四条路都能干净退出，表情不残留。顺带评估两处主观项：牌桌留白（等高的代价）是否可接受、台词语气是否够欠揍。",
+      "files": [
+        "prompt-pet/src/index.html",
+        "prompt-pet/src/style.css",
+        "prompt-pet/src/renderer.js"
+      ],
+      "verification": "人工：右键进牌桌 → 出拳三次（覆盖胜/负/平）→ 检查台词/表情/比分/好感；牌局中右键看置灰；开番茄钟再开牌桌等到点；ESC / ✕ / 点球各退出一次。运行：cd prompt-pet && npm start；单测 node .deepworks/tmp/test-renderer.mjs；真机 cd prompt-pet && ./node_modules/.bin/electron ../.deepworks/tmp/e2e-game.js",
+      "status": "pending-human-acceptance"
+    },
+    {
+      "id": "phase3.23-001",
+      "date": "2026-10-23T18:20:00+08:00",
+      "phase": "Phase 3.23",
+      "phaseGoal": "欢呼差分接入（专注归零 3 秒 + 猜拳认输，标准/极致双档素材）",
+      "type": "[AI-GEN]",
+      "task": "新增「双手举起」欢呼差分并接进番茄钟专注结束与猜拳玩家输两个场景",
+      "description": "素材：src/assets/pet-cheer.png（384×384，标准档）与 pet-max-cheer.png（599×1120，极致档），均由 1024 白底生成图去水印（水印矩形实测零彩色像素，整块填背景色 250/252，阈值抠字会把围裙丝袜涂白）+ 抠图（标准档近中性白 flood fill 保留白描边；极致档 isnet-anime --ttest 蒙版、边缘过渡带 1.437%，crop bbox 后缩到高 1120）。renderer.js：新增 POMO_CHEER_MS=3000、PET_FACES.cheer、PET_MAX_FACES.cheer、FACE_CHEER、state.cheerUntil/cheerTimer、showCheer()/clearCheer()；GAME_FACE.lose 从 pot 改为 cheer；updateBaseState() 插入第三层 cheer 窗口（airborne > game > cheer > pomodoro > sleep/favor，且 phase!==POMO_FOCUS 才生效）；onPomodoroDone() 专注归零先播 3 秒欢呼再弹大对话框；applyPomodoroSnapshot() 见到新开 FOCUS 立刻 clearCheer()；stopPomodoro() 手动停止也 clearCheer()。用时间戳而非布尔量，避免后台定时器节流导致永久举手。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/assets/pet-cheer.png",
+        "prompt-pet/src/assets/pet-max-cheer.png",
+        "prompt-pet/PLAN.md",
+        "prompt-pet/DEV_LOG.md",
+        "prompt-pet/buildLog.json"
+      ],
+      "verification": "AI 自测：node --check src/renderer.js 通过；单测 694 通过 / 0 失败；真机 e2e-pomodoro.js 35/35（POMO_FOCUS_MS=3000 POMO_REST_MS=5000，截图 06-focus-done 欢呼 / 06b-cheer-gone 睡姿 / 07-rest-done 回常态 / 08-stopped 不庆祝）；e2e-game.js 全绿；回归 e2e-faces / e2e-electron / e2e-roast / e2e-fling / e2e-panic 均 exit 0 且 problems: []。",
+      "commit": "feat(phase3.23): 欢呼差分接入（专注归零 3 秒 + 猜拳认输，双档素材）",
+      "status": "done"
+    },
+    {
+      "id": "phase3.23-002",
+      "date": "2026-10-23T18:20:00+08:00",
+      "phase": "Phase 3.23",
+      "phaseGoal": "欢呼差分接入（专注归零 3 秒 + 猜拳认输，标准/极致双档素材）",
+      "type": "[MANUAL]",
+      "task": "人工验收欢呼差分的两个触发场景与 3 秒回落",
+      "description": "需要你本人确认五件事：① 专注归零瞬间她双手举起、气泡是「（伸懒腰） 时间到啦！笨蛋，快起来活动一下！」、胶囊同时转「休息中」；② 什么都不点，3 秒后自己落回抱膝睡姿；③ 再次点「专注」立刻是敲代码姿势，不会先举 3 秒手；④ 专注中途「停止计时」直接回常态，不欢呼；⑤ 猜拳故意输一局她举手欢呼 + 「就这？笨蛋，你连我都赢不了。」，赢一局仍是撇嘴、平局仍是死鱼眼。顺带评估 3 秒窗口是否够看清、专注结束立刻入睡会不会显得突兀。",
+      "files": [
+        "prompt-pet/src/renderer.js",
+        "prompt-pet/src/assets/pet-cheer.png",
+        "prompt-pet/src/assets/pet-max-cheer.png"
+      ],
+      "verification": "人工：右键开专注（可临时改短时长）→ 等归零看欢呼 → 静观 3 秒回落 → 再开专注看是否立刻 code → 中途停止看是否不庆祝 → 猜拳输/赢各一局看表情。运行：cd prompt-pet && npm start；单测 node .deepworks/tmp/test-renderer.mjs；真机 cd prompt-pet && POMO_FOCUS_MS=3000 POMO_REST_MS=5000 ./node_modules/.bin/electron ../.deepworks/tmp/e2e-pomodoro.js",
+      "status": "pending-human-acceptance"
     }
   ]
 }

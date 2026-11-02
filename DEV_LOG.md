@@ -943,3 +943,506 @@ transition: transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1);
 ### 下一步
 - 用真实 key 点一次右键，确认 `¥` 金额与官网余额一致；余额为 0 时也应显示 `¥0.00`。
 - 若想让加载态更久/更短，只改 `BALANCE_TIMEOUT_MS`（默认 10 秒）。
+
+## 2026-10-23 · Phase 3.15（拖拽惯性 + 撞墙 Q 弹）
+
+### 完成事项
+- [AI-GEN] 拖拽时按 `performance.now()` 采样最后几次 mousemove（`FLING_SAMPLE_KEEP = 6`），
+  松手用「最后两帧坐标差 / 时间差」算速度，单位 px/ms。
+- [AI-GEN] 三个兜底：`dt < 4ms` 往前并帧（防高刷屏除零炸出天文数字）、
+  最后一个采样距松手 `> 120ms` 直接判 0（手停住了）、
+  矢量限速 `FLING_MAX_SPEED = 3.0`（只缩短、不改方向）。
+- [AI-GEN] 惯性主循环 `stepFling()`：rAF 驱动，按真实 dt 做 `0.915^(dt/16.667)` 指数衰减，
+  所以 60Hz / 120Hz 屏幕的滑行距离一致；`dt` 上限 48ms，切后台回来不会瞬移。
+- [AI-GEN] 撞墙：位置夹紧 + 法向速度 `*= -0.55`；撞击强度在反向之前取（否则永远是 0.55 倍）；
+  低于 `FLING_STOP_SPEED = 0.04` 直接归零，避免贴边抖动。
+- [AI-GEN] Q 弹：撞左/右墙播 `impact-x`（`scale(0.88, 1.12)`，横向压扁），
+  撞顶/底边播 `impact-y`（`scale(1.1, 0.9)`，需求指定值）；460ms 回弹含过冲，
+  冷却 80ms 防撞角连播，`triggerImpact()` 先摘类 + 强制重排保证能重播。
+- [AI-GEN] 动画挂在 `.pet-core` 而不是 `#pet`：`#pet` 的 transform 被 rAF 的 `translate3d` 独占，
+  写 scale 会把位移覆盖掉。CSS 用同名 `animation` 覆盖 `idle-breathe`，互不干扰。
+- [AI-GEN] 与原吸附的优先级：先 `startFling()`，返回 false（太慢 / 减少动态效果）才 `snapToNearestEdge()`；
+  滑行自然停止后 `endFling(true)` 再走一次吸附。按下宠物 / 窗口失焦 / 中断都会 `stopFling()` 立即停住。
+- [AI-GEN] 滑行每帧 `refreshIgnore()`：宠物从鼠标底下飞过时能被一把抓住；
+  `setIgnoreMouse` 内部去重，不会每帧发 IPC。
+- [AI-GEN] `prefers-reduced-motion: reduce` 时完全不甩、不挤压，CSS 再兜一层 `animation: none`。
+- [AI-GEN] 测试：新增场景 M（12 组断言），单测 **402 通过 / 0 失败**；
+  真机探针 `.deepworks/tmp/e2e-fling.js`：松手后 `flinging true`、撞右墙夹在 `1320`、
+  `impactX true`、反弹后 `settled.x 1038`、1.2 秒后自动停下且类名摘除、`problems: []`。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| `#pet` 的 transform 已被 rAF 的 `translate3d` 独占，再写 scale 会丢位移 | ✅ 挤压动画改挂 `.pet-core`，用更高特异性的 `animation` 覆盖 `idle-breathe` |
+| 高刷屏上两个 mousemove 可能同一帧到达，`dt≈0` 会让速度爆表 | ✅ `dt < 4ms` 时向前并帧，仍不够就放弃（速度 0） |
+| 拖到位停一下再松手，采样还停在旧位置，宠儿会莫名飞出去 | ✅ 最后采样超过 120ms 直接判速度 0 |
+| 惯性滑行与 CSS 吸附过渡同时存在会互相抢 transform | ✅ 两条路径互斥：`startFling()` 成功即移除 `.snapping`，失败才吸附 |
+| 撞角时 x/y 两轴同时命中会连播两次挤压 | ✅ 80ms 冷却 + `hitX` 优先 |
+| Node 单测环境没有 `performance` / `requestAnimationFrame` | ✅ 全部做 typeof 守卫，并给 harness 加可选可控时钟（`clock: true`） |
+
+### 下一步
+- `npm start` 亲手甩几次：确认甩出方向跟手、撞墙 Q 弹不糊、贴边吸附没有变迟钝。
+- 想更「黏」一点就调大 `FLING_FRICTION`（0.915 → 0.93），想更「飘」就调小。
+- 若觉得反弹太远，调 `FLING_BOUNCE`（0.55 → 0.45）。
+
+## 2026-10-23 · Phase 3.16（四张基础表情 + 状态机）
+
+### 完成事项
+- [AI-GEN] 抠图：`idle.jpg` / `sad.jpg` / `sleep.jpg` 三张白底 JPG 边缘 flood fill 去背
+  （`NEUTRAL_MIN=232`、`SAT_MAX=16`、0.7px 高斯羽化），保留抱枕、Z 字气泡、水珠、聊天泡，
+  右下角水印矩形整块清成透明；`pot` 由 `pet-high.png`（头顶铁盆的全身图）统一处理。
+  四张全部 384×384、内容长边 360、底对齐，切换时不忽大忽小。
+- [AI-GEN] 职责拆分：`PET_FACES` 决定「显示哪张」，`DEPTHS` 只决定画框尺寸 + 模型参数。
+  `applyDepth()` 的 morph / 直切两条分支都改成重贴当前表情，档位不再抢 `src`。
+- [AI-GEN] `setPetImage(src, { animate, instant })`：同图判重 → 自增 `imageSeq` → 预解码 →
+  解码完成才写 `src`；过期结果直接丢弃，解决连点换表情时的「慢图盖快图」和首帧露白。
+- [AI-GEN] `updateBaseState()` 是唯一的表情决策点：`airborne`（甩飞中）→ pot；
+  `sleeping` → sleep；否则 favor `<20` → sad、`<40` → idle、`≥40` → pot。
+  好感度结算、每轮对话结束、入睡、醒来、起滑、落地都会调它，优先级不会散落在各处。
+- [AI-GEN] 睡眠：`SLEEP_AFTER_MS = 60s`，每秒巡检一次；`press.active` / `dragging` /
+  `fling.active` / `airborne` / `sending` 都不算「闲着」，不会睡。
+  巡检抽成 `checkSleepDeadline()`，因为单测沙箱里没有 `setInterval`，需要能手动触发。
+- [AI-GEN] 唤醒：`onMouseDown` 里就 `wakeUp()`（不等松手，否则睡姿会多留几十毫秒）；
+  松手若是「单击」→ `showWakeLine()` 打开气泡并说「啧，干嘛吵醒我？」，
+  5 秒冷却；`wakeLineAt === 0` 表示还没说过 —— 不能用 `nowMs()` 直接相减，
+  否则页面刚开 3 秒时第一句会被误判成冷却中。
+- [AI-GEN] 甩飞：`startFling()` 成功即 `airborne = true` 强制 pot（`instant`，空中不能等解码），
+  `endFling()` 落地再 `updateBaseState()` 恢复；中途抓住同样走 `endFling(false)`。
+- [AI-GEN] 顺带修了一个真实场景的坑：`onMouseDown` 现在会用事件坐标刷新 `state.pointer`。
+  原先只靠 `mousemove` 维护，触控板轻点 / 脚本直按可能让松手时误判「不在宠物上」，
+  于是唤醒不出台词。
+- [AI-GEN] CSS：换表情 180ms `face-in`（只动 opacity，绝不碰 transform / filter，
+  免得和 thinking 摇头、立绘 scale(1.1)、悬停高亮打架）；睡眠挂 `.pet-core` 的
+  `sleep-breathe`（4.8s、2px），`prefers-reduced-motion` 下两者都 `animation: none`。
+- [AI-GEN] 测试：单测 **440 通过 / 0 失败**（新增场景 N：三段好感度阈值、同图判重、
+  60s 入睡、睡眠优先级、戳醒 + 台词 + 冷却、甩飞 pot / 落地恢复、忙碌时不睡）；
+  真机探针 `.deepworks/tmp/e2e-faces.js`：四张图 `naturalSize 384×384`、`complete true`、
+  同一渲染尺寸 `192×192`、`sleep-breathe` 生效、戳醒后台词入气泡，`problems: []`，
+  截图存在 `.deepworks/tmp/faces/`。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| 档位立绘和表情都想写同一个 `<img>.src` | ✅ 拆权：档位只管画框，表情只管图片 |
+| 直接改 `src` 会有解码空帧，连点还会「慢图盖快图」 | ✅ `setPetImage` 预解码 + `imageSeq` 自增校验 |
+| 睡姿动画和 `thinking` / `impact` 抢 `.pet-sprite` 的 transform | ✅ 睡眠动画挂 `.pet-core`，换表情只动 opacity |
+| 第一句「干嘛吵醒我」被 5 秒冷却吃掉 | ✅ 用 `wakeLineAt === 0` 表示「从没说过」，不再拿 `nowMs()` 硬减 |
+| 没有先 `mousemove` 的点击，松手时 `state.pointer` 是旧值 | ✅ `onMouseDown` 用事件坐标刷新 `state.pointer` |
+| `pet-high.png` 的盆太宽，按长边缩放后角色显小 | ✅ 四张统一 384 画布 + 内容长边 360，底对齐；视觉差异来自「盆盖住头」，不是尺寸 |
+
+### 下一步
+- `npm start` 亲手走一遍：60 秒入睡 → 戳醒 → 连发消息把好感压到 19 → 甩飞。
+- 若觉得睡得太快 / 太慢，只改 `SLEEP_AFTER_MS`；阈值改 `FAVOR_SAD_BELOW` / `FAVOR_IDLE_BELOW`。
+- 想恢复「三档立绘」，把 `applyDepth()` 里的 `spriteSrcForFace(state.face)` 换回 `DEPTHS[next].src` 即可。
+
+### 修正（同日）：表情包只作用于「标准」档
+- [AI-GEN] 需求澄清：只有标准档（`high`）换四张表情；轻量（`low`）和极致（`max`）
+  必须保持改动前的样子 —— 仍是 `pet-low.png` / `pet-max.png`，不参与睡眠、好感度、
+  甩飞的表情切换。
+- [AI-GEN] 新增 `FACE_PACK_DEPTH = 'high'`、`usesFacePack(depth)`、`spriteSrcForDepth(depth)`、
+  `currentSpriteSrc(face, depth)`：把所有「该显示哪张图」收敛成一个函数。
+  标准档走表情，其余档位走 `DEPTHS[].src`，两套规则不会同时生效。
+- [AI-GEN] `applyFace()` 只在标准档挂 `sleeping` 类、只在标准档做换图淡入；
+  非标准档仍会更新 `state.face`（切回标准档时立刻对得上），但视觉不变。
+- [AI-GEN] `checkSleepDeadline()` 在非标准档直接返回：轻量 / 极致没有自动睡眠，
+  也不会出现「干嘛吵醒我」的台词。
+- [AI-GEN] `applyDepth()` 的 morph / 直切两条分支、以及 `runMorph()` 暗场写图，
+  统一改为 `currentSpriteSrc()`。轻量 / 极致换档行为和 Phase 3.15 完全一致。
+- [AI-GEN] `index.html` 首帧 src 恢复 `assets/pet-low.png`（默认档是轻量），
+  注释写清「标准档才用表情图」。
+- [AI-GEN] 测试：451 通过 / 0 失败。新增场景「轻量 / 极致保持原样」：
+  好感 0 不换图、不入睡、不挂 sleeping 类、甩飞不换 pot、切极致仍是 pet-max、
+  切回标准立刻显示当前表情（favor 10 -> sad）。真机探针新增四项：
+  `lowKeepsOwnArt` / `maxKeepsOwnArt` / `backToHighUsesFace` /
+  `sameRenderSizeAcrossDepth`，全部 true，`problems: []`。
+- ⚠️ 默认档仍是 `low`（轻量）。想看到四张表情，需要在设置里把「思考深度」切到「标准」。
+
+## 2026-10-23 · Phase 3.17（极致档的九头身表情包）
+
+### 完成事项
+- [AI-GEN] 生成三张九头身差分（1024×1536，参考图 `pet-max.png`）：抱枕抱膝睡姿、
+  死鱼眼 + 省略号气泡、含泪 + 汗滴。角色特征（蓝发 / 女仆装 / 鲸鱼尾 / 白色贴纸描边 /
+  头顶光环）三张保持一致，动作幅度对齐标准档的 Q 版四表情。
+- [AI-GEN] 后处理脚本 `.deepworks/tmp/maxpack.py`：从四边 flood fill 近中性白
+  （`NEUTRAL_MIN=234`、`SAT_MAX=14`、0.8px 羽化），右下角 `DeepWorks AI` 水印整块清空，
+  再用连通块面积过滤掉残留的孤立碎块（<160px）。
+  先验证过抱枕 / 围裙 / 白丝袜这些「白底上的白」没有被 flood fill 吃掉。
+- [AI-GEN] 尺度对齐（这是本阶段最容易翻车的地方）：
+  以 `pet-max.png` 的脸宽 **76px** 为基准。站姿（哭泣 / 无语）按内容高度 1108 归一 ——
+  它们和参考图是同一种构图，归一后角色大小与 `pet-max` 一致；
+  坐姿（抱枕）如果也按高度归一，头部会比站姿大 1.6 倍（生成时模型把角色画「近」了），
+  所以改成按脸宽对齐，再取 h88（比严格同头大 16%），坐姿填满画布下半屏又不至于突变。
+- [AI-GEN] 画布保持竖长（aspect 0.37–0.46 < 画框的 0.667），所以在 `object-fit: contain`
+  下始终是「高度受限」，与 `pet-max.png` 用同一条缩放规则 —— 不需要改 CSS。
+- [AI-GEN] 代码：新增 `PET_MAX_FACES`（pot 直接复用 `pet-max.png`）+ `FACE_PACKS` 表；
+  `spriteSrcForFace(face, depth)` 改成按档位取包（合法性仍以 `PET_FACES` 的键集合为准）；
+  `usesFacePack(depth)` 改为查表；`FACE_PACK_DEPTH` 从 `'high'` 改为 `['high','max']`。
+  其余状态机（60 秒入睡、好感度分档、甩飞铁盆、唤醒台词）一行没改，天然对 max 生效。
+- [AI-GEN] 测试：单测 **465 通过 / 0 失败**（新增：极致档四种表情各自的图源、
+  极致档 60 秒入睡、极致四张文件存在性检查 —— 漏文件在单测里不会报错，所以显式查盘）；
+  真机探针 `e2e-faces.js` **19 项 checks 全 true**，新增
+  `maxUsesOwnPack` / `maxIdleAt30` / `maxSadAt10` / `maxSleepAt61s` /
+  `maxSpritesLoaded` / `maxSameRenderBox`，`problems: []`。
+  截图 `.deepworks/tmp/faces/07-max.png` … `07d-max-sleep.png`。
+  `e2e-electron.js`、`e2e-fling.js` 均无回归。
+- [AI-GEN] 顺手清掉两条过期注释：`applyFace()` / `checkSleepDeadline()` 里原本写
+  「轻量 / 极致都不参与表情」，现在极致已经进表，改成「没有表情包的档位（轻量）」。
+  代码逻辑本来就靠 `usesFacePack()` 查表，行为没变，只是别把后来的人带沟里。
+- [AI-GEN] 真机拼图复核（四态裁切并排）：三张站姿的头顶高度、脚底基线、头部宽度一致；
+  睡姿头部宽度与站姿相差不到 5%，落在地面同一条基线上，切表情没有「忽大忽小」。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| 生成图右下角带 `DeepWorks AI` 水印，且抠底时靠 flood fill 删不掉灰字 | ✅ 按坐标整块清空 alpha（0.70w × 0.90h 起），再删孤立碎块 |
+| 白色抱枕 / 围裙 / 白丝袜和白色背景连在一起，flood fill 可能漏进去 | ✅ 只吃「与四边连通 + 近中性白」，枕头有描边挡着；抠完在深色底上逐块复核 |
+| 睡姿是坐姿，按高度归一后头部比站姿大 1.6 倍，切表情会突然变大 | ✅ 改按脸宽对齐；再按 h88 给一点余量 |
+| 站姿的两张脸宽检测不一致（无语比哭泣测得宽 17%） | ✅ 站姿改用「内容高度归一」（同构图），只有坐姿用脸宽 |
+| 极致的差分尺寸各不相同（413×1120 / 449×1120 / 514×1108） | ✅ 都是竖长图，`contain` 下同样高度受限，渲染尺寸一致（探针 `maxSameRenderBox` 210×315） |
+
+### 下一步
+- 切到「极致」亲手走一遍：好感 30 → 死鱼眼、好感 19 → 含泪、闲置 60 秒 → 抱枕睡姿 → 戳醒。
+- 觉得坐姿还是偏小就把 `maxpack.py` 的 `head_px` 从 88 调到 100 重新导出；
+  想严格同头就用 76。
+- 想给轻量档也加表情包：生成四张 256×256 后放进 `FACE_PACKS.low` 即可，其余逻辑不用动。
+
+## 2026-10-23 · 素材：敲代码差分（标准 + 极致，备用，未接入）
+
+### 完成事项
+- [AI-GEN] 以 `pet-idle.png`（Q 版）和 `pet-max.png`（九头身）为参考各生成一张
+  「努力敲代码」差分：抱着打开的笔记本、双手飞快敲键盘、屏幕蓝光打脸、
+  专注微皱眉 + 汗滴、头边飘 `</>` 符号。1024×1024 / 1024×1536。
+- [AI-GEN] 抠图：沿用 `NEUTRAL_MIN=234` 的边缘 flood fill + 水印块清空 + 孤立碎块剔除，
+  四张图的白裙 / 围裙 / 白丝袜 / 枕头都没被吃掉，也没有漏出内部透明洞。
+- [AI-GEN] 尺度对齐：
+  - 标准档（`.deepworks/tmp/qpack.py`）：内容长边 360、底对齐 372、水平居中，
+    落到 384×384 —— 顶边 12、底边 372 与 `pet-idle.png` 完全一致，宽度 286（原来是 308，
+    抱电脑收拢了手臂）。
+  - 极致档（`.deepworks/tmp/maxcode.py`）：内容高度 1108、画布 529×1120，
+    脸部肤色块宽 **76px**，和 `pet-max.png` 一模一样，切表情不会换头。
+- [AI-GEN] 极致档多两步返工：
+  1. 第一版头身比画成了 8.5 头身（脸宽 66 → 归一后 48），比参考小 35%，
+     重生成时把「头身比必须与参考一致、约 7.5 头身、不要拉长腿」写成硬约束；
+  2. 参考图边缘是干净线稿，生成图却带一圈白色贴纸描边，
+     于是加了 `strip_outline()`：只剥「与透明背景连通的白色」（阈值放到
+     `min>=205 / sat<=28`，因为描边往里过渡到浅灰），白裙白袜被线稿包住所以不受影响。
+  剥掉 16294 个像素后，深色底上的亮边消失，与 `pet-max` 系列一致。
+- [AI-GEN] 交付在 `outputs/imagegen/code-cut/`：`pet-code.png`（384×384）、
+  `pet-max-code.png`（529×1120）、`_preview-light.png` / `_preview-dark.png`。
+  试错版本（头太小 / 头太大）移至 `.deepworks/tmp/code-variants/`。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| 极致档第一版头身比画成 8.5 头身，头部比参考小 35%（按高度归一时暴露） | ✅ 生成时写死「头身比与参考一致」，第二版脸宽 74 |
+| 第二版头身比对了，但多出白色贴纸描边（参考图没有） | ✅ 追加 `strip_outline()`，剥连通白边 |
+| 第三版去掉描边后头又画大了（脸宽 106，超参考 39%），缩回去会变矮 | ✅ 放弃该版，改用「比例正确的第二版 + 后期剥边」 |
+| 剥边后仍有 1200 个浅灰边缘像素，深色底上留一圈亮边 | ✅ 放宽剥边阈值（232/14 → 205/28），残留降到 816（正常抗锯齿） |
+
+### 下一步
+- 想启用：把两张图拷进 `prompt-pet/src/assets/`，在 `PET_FACES` / `PET_MAX_FACES`
+  里各加一个 `code` 键（图源已按同尺度导出，不需要改 `spriteSrcForFace`），
+  再决定 `updateBaseState()` 里什么条件进这个表情（例如 `sending` 期间）。
+
+## 2026-10-23 · Phase 3.18（番茄钟：专注 / 休息 + 头顶倒计时）
+
+### 完成事项
+- [AI-GEN] `src/main.js`：新增番茄钟状态机（`idle → focusing → resting → idle`）。
+  计时用**绝对 `endsAt`**而不是累加 `setInterval` 次数 —— 窗口被隐藏、系统睡眠、
+  主进程被挂起都会让 interval 漂，绝对时间每次 tick 自愈。
+  专注期间挂 `powerSaveBlocker.start('prevent-app-suspension')`（休息 / 停止 / 退出释放），
+  新增 `pomodoro:start|stop|state` 三个 IPC，全部走 `isTrustedSender` 校验。
+  `ready-to-show` 补推一次快照，`will-quit` 调 `pomoDispose()` 防止 blocker 泄漏。
+- [AI-GEN] `src/preload.js`：只暴露 `pomodoroStart/Stop/State` + `onPomodoroTick/Done`，
+  phase 走白名单（只允许 `focusing|resting`），回调返回 unsubscribe，不把 IPC event 透给页面。
+- [AI-GEN] `src/renderer.js`：
+  - `state.pomodoro` 接入 `updateBaseState()`，优先级放在 `airborne` 之后、
+    睡眠之前（专注 → `code`，休息 → `sleep`）；
+  - `checkSleepDeadline()` 在计时期间直接 return，否则 60 秒睡眠巡检会把睡姿从番茄钟手里抢走；
+  - `applyPomodoroSnapshot()` 只在 **phase 变化**时才重算表情 —— 每秒 tick 都走一遍
+    `updateBaseState()` 属于白白读写 DOM；
+  - 新增 `#pomo-chip` 渲染 / 定位：跟拖拽、甩飞、吸附联动；气泡在上方时让到脚下；
+  - 归零用复用气泡的大号模式（`.bubble--big`），8 秒后自动复位；
+  - 右键改为打开 `#pet-menu`（五项），原「右键查余额」抽成 `refreshBalance()`
+    并降级为菜单项；菜单计入命中检测，Escape / 点外部 / 窗口失焦都会收起。
+- [AI-GEN] `src/index.html` / `src/style.css`：胶囊用 `visibility` 而非 `display:none`
+  （否则量不到 `offsetWidth` 没法摆位）；菜单 `z-index: 3` 盖在气泡之上；
+  `prefers-reduced-motion` 下关掉弹出动画。
+- [AI-GEN] 素材接入：两张「敲代码」差分拷进 `src/assets/`，注册 `code` 表情键。
+- [AI-GEN] 最关键的一条约束：**轻量档不换图**。`usesFacePack('low') === false` +
+  `setPetImage()` 的判重，让 `focusing` 期间 `<img src>` 一个字节都不改 ——
+  只有 `pet.dataset.face` 变了。单测与真机探针都专门盯这一点。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| 胶囊在气泡打开时让到脚下，却压在小腿上（截图一看就穿帮） | ✅ 立绘常态 `scale(1.1)`，实际绘制比画框上下各高约 5%；定位改为按 `box.h * 0.1 / 2` 的溢出量再退 |
+| 气泡用 `display:none` 时 `offsetWidth` 为 0，胶囊永远摆到 (0,0) | ✅ 胶囊与菜单统一用 `visibility: hidden`，保留盒模型 |
+| 右键改菜单后，Phase 3.14 的 6 条单测与 `e2e-electron.js` 的钱包段全红 | ✅ 断言改成「右键 → 菜单出现 → 点「查余额」→ 钱包」，并补菜单项数量 / 自动收起断言 |
+| vm 单测里 mock 元素没有 `querySelector/contains`，菜单逻辑一开就抛错 | ✅ 三处加能力检测（`typeof ... === 'function'`），真机行为不变 |
+| 归零大对话框 8 秒后要收回去，但用户可能正在打字 | ✅ `bigDialogTimer` 只改 `.bubble--big` 类，不关闭气泡、不抢焦点 |
+
+### 测试
+- 单测 `node .deepworks/tmp/test-renderer.mjs`：**520 通过 / 0 失败**。
+  新增场景：标准档专注换 `pet-code.png`、休息换 `pet-sleep.png`、停止回 `pet-pot.png`、
+  计时期间不入睡、胶囊文案与显隐、归零台词、`bubble--big`、轻量档三次「图完全不变」、
+  极致档 `pet-max-code.png`、HTML / 主进程静态结构断言。
+- 真机 `e2e-pomodoro.js`：**29 项 checks 全 true**，`problems: []`。
+  `POMO_FOCUS_MS=3000 POMO_REST_MS=2000` 跑完一轮，截图在 `.deepworks/tmp/pomo/01…08`。
+  额外验证：`pet-code.png` 解码后 `naturalWidth > 0`、倒计时真的在减少、
+  胶囊与气泡**交集面积为 0**、胶囊整体落在绘制外框之外。
+- `e2e-electron.js`（钱包改成走菜单后）`problems: []`；
+  `e2e-fling.js` / `e2e-faces.js` 无回归。
+
+### 下一步
+- 人工验收重点：轻量档开专注，盯住角色**别动**；三档各开一次看表情；归零台词与字号。
+- 如果觉得 25 分钟太长，`POMO_FOCUS_MS` 只用于自检，正式时长直接改
+  `POMO_DEFAULT_FOCUS_MS`；要加「长休息（15 分钟）」就在 `pomoFinish()` 里数轮次。
+
+## 2026-10-23 · Phase 3.19（极致档被击飞差分：铁盆 + 慌张）
+
+### 完成事项
+- [AI-GEN] 素材：以 `pet-max.png` 为参考做 image edit，生成「不锈钢盆倒扣在头上、
+  双手扶盆沿、瞪眼张嘴脸红 + 一滴汗」的差分。两版候选：
+  A 版挺直站立（双手像「举着盆」），B 版后仰单脚离地（更像被扔出去），选 B。
+  后处理走既有 `maxpack.py auto`（白底 flood-fill + 去右下角水印 + 内容高度对齐 1108px），
+  产出 `src/assets/pet-max-panic.png`（521×1108 RGBA，722 KB）。
+- [AI-GEN] `src/renderer.js`：`PET_MAX_FACES.panic` + `FACE_PANIC`；
+  `updateBaseState()` 的 airborne 分支从 `FACE_POT` 改为 `FACE_PANIC`。
+  关键点：**不做档位分支**。`applyFace()` 用 `PET_FACES[face]` 查表，标准档没有 panic
+  就自动回落 pot（Q 版 pot 本来就顶着铁盆），轻量档继续走「只记录、不换图」。
+  为此给 `PET_FACES` 补了 `panic: './assets/pet-pot.png'`，让 `data-face` 能如实记为 `panic`。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| 第一版 A 构图「头大身短」，头身比接近 6.5，和 max 档的 7.5 头身不一致 | ✅ 重出 B 版，提示词里点名「head-to-body ratio IDENTICAL / about 7.5 heads」，并在提示词里禁掉白描边贴纸边 |
+| 真机 `capturePage()` 截到的是过期帧（角色还是 Q 版），但 `readState()` 明明已是 max | ✅ 窗口 `hide()` 后 compositor 不重新合成；改成 `showInactive()`，截图前再等 220ms |
+| e2e 里甩飞 200ms 就落地，`滑行途中仍是铁盆差分` 断言偶发失败 | ✅ 窗口默认在右下角，往右甩立刻撞墙；改成往左上甩（`startFling(-1.9, -0.35)`） |
+
+### 测试
+- 单测 `node .deepworks/tmp/test-renderer.mjs`：**538 通过 / 0 失败**。
+  新增：极致档 `startFling` → `pet-max-panic.png` / face `panic`；
+  落地回 `pet-max-idle.png`；睡眠中被甩仍显示铁盆；轻量档仍 `pet-low.png`；
+  PNG 头部校验（1108 高、color type 6、<1MB）。
+- 真机 `e2e-panic.js`：**17/17 checks**，`problems: []`。
+  覆盖：解码成功（`naturalWidth=521`）、绘制高度不超过 315 画框、
+  滑行中不回弹、标准档仍 `pet-pot.png`、轻量档 src 零变化。
+  截图 `.deepworks/tmp/panic/01…04`。
+- 回归：`e2e-pomodoro.js` / `e2e-electron.js` / `e2e-fling.js` / `e2e-faces.js` 未受影响
+  （只新增了一个表情键与一条分支）。
+
+### 下一步
+- 人工验收：极致档甩一次，看离手瞬间是否换成铁盆慌张；落地是否立刻恢复。
+- 如果嫌铁盆「太亮」或想换搪瓷盆（带蓝边 / 掉漆），重跑一次 image edit 即可，
+  后处理与代码都不用动。
+
+---
+
+## Phase 3.20 · 设置面板重排（2026-10-23）
+
+### 这次只动了 UI
+功能逻辑一行没改：保存 key、清 key、切档、清记忆、Esc 返回都还是原路径。
+改的是「五个控件平铺一列」的版面 —— 拆成两张卡片、文案各留一句、按钮各归其位。
+
+### 改了哪些文件
+- `src/index.html`：`#view-settings` 重写为
+  `section.settings-card`（API 与模型）× 1 + `section.settings-card`（记忆管理）× 1
+  + `.settings-actions`。所有 id 原样保留。
+- `src/style.css`：文件末尾新增「Phase 3.20」区块（卡片 / 标题行 / 字段 /
+  统一 36px 控件 / 文字链 / 危险按钮 / 底部主按钮）；
+  删掉已无引用的 `.bubble-label` 与 `.bubble-ghost`；
+  设置页的 `data-kind="ok"` 改回灰字。
+- `src/renderer.js`：三处文案 + 一个小函数：
+  - `defaultDepthText()`：`当前：轻量 · chat · 192×192` → `直答模式，不展示推理过程`；
+  - `showApplied()`：`极致 · reasoner · 210×315 / 已生效并记住…` → `已记住 · 会展示推理过程`；
+  - `refreshKeyStatus()`：`已经存好饭卡了（…），点「保存」可以换一张。`
+    → `已保存：sk-12…6f1b（输入新 Key 可覆盖）`；
+  - `maskKey()`：短 key 的兜底从 `'已保存'` 改成 `'sk-…'`，
+    否则文案会变成「已保存：已保存」；
+  - 顺手删掉不再被引用的 `shortModelName()`。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| 「清空聊天记忆」原来一点就清，没有二次确认 | ✅ 不加确认弹窗（会改动交互逻辑、也要改 e2e）；改用视觉防误触：红描边 + 5% 浅红底（不实心）、`align-self:flex-start` 与说明文字隔开、hover 才加深、active 缩 1.5% |
+| 删掉左下角「清除」会连带删掉「清空 Key」这个功能 | ✅ 保留能力、降级形态：提示行右侧一条 `text-decoration-color: transparent` 的文字链，hover 才变红。真要彻底移除，删 HTML 里 `#key-clear` 那三行即可（`renderer.js` 有 `if (keyClear)` 判空） |
+| `#memory-status` 后面要加「最近 5 轮会带给模型」，但单测断言 `textContent === '记忆 N 条'` | ✅ 说明做成静态 `<span>`，只有 `#memory-status` 由 JS 写，断言原样通过 |
+| 旧截图脚本直接给 `capturePage()` 传 rect，截出来偏到屏幕下半截 | ✅ 改成整窗 capture 后按 `rect × 设备像素比` 裁剪，见 `.deepworks/tmp/shot-settings-v2.js` |
+
+### 测试
+- 单测：**538 通过 / 0 失败**（只改了 2 条断言的期望，都是本次删掉的重复文案）。
+- 真机：`e2e-electron` `problems: []`；`e2e-pomodoro` 29/29；
+  `e2e-faces` 全 true（低档 `faceSwap:false` 是设计如此）；
+  `e2e-fling`、`e2e-panic`（17/17）全部 `problems: []`。
+- 视觉：`.deepworks/tmp/work/settings-no-key.png`（470 → 454px 高，一屏放得下）、
+  `settings-with-key.png`（`记忆 12 条 · 最近 5 轮会带给模型` 最长情况不换行、不挤压标题）。
+
+### 下一步
+- 人工验收排版；若想让「记忆 N 条」独占一行，把 `.settings-card-meta` 的
+  `flex-direction` 改成 `column` 即可（一行 CSS）。
+
+---
+
+## Phase 3.21 · 剪贴板吐槽 + 语音播报（2026-10-23）
+
+### 完成事项
+- [AI-GEN] **剪贴板监听（主进程）**：`CLIP_POLL_MS = 3000` 轮询，
+  `classifyClipboard()` 只分 `error` / `code` 两类，`> 20000` 字直接忽略，
+  `clipFingerprint = kind|length|前 120 字` 配 `CLIP_SEEN_LIMIT = 30` 去重。
+  IPC 只走两条：`clipboard:set-watch`（渲染 → 主，开关）+
+  `clipboard:hint`（主 → 渲染，`{kind, text: 前 2000 字, at}`）。
+  **不把整段剪贴板送进渲染进程**，也不落盘 —— 隐私边界只到「长度 + 前 120 字指纹」。
+- [AI-GEN] **被动气泡**：`showRoast()` 走 `openBubblePassive()`，不聚焦输入框、
+  不改 `state.panel`；`ROAST_VISIBLE_MS = 8000` 自动收起；
+  `appendMessage('roast', line)` 只加 `.msg--roast`，不加复制按钮、不走 Markdown。
+- [AI-GEN] **TTS**：`speakText()` → `stripMarkdownForSpeech()` →
+  `clipForSpeech(plain, 200)`；`rate 1.12` / `pitch 1.28`；`zh-CN` 声音优先
+  （macOS 实测 180 个 voice，命中「婷婷」）。无引擎返回 `false` + 状态行警告。
+- [AI-GEN] **设置页第三张卡片「声音与提醒」**：`pet_speech` 默认 `off`、
+  `pet_clip_roast` 默认 `on`，两个下拉即时生效并持久化。
+- [AI-GEN] **设置页几何修正**：`fitSettingsHeight()` 里扣掉气泡外壳
+  `chrome = bubbleH - viewH`（量不到兜底 72），真机 `maxHeight 517px`、
+  气泡 `y=2 h=579`、角色 `y=595`、重叠 0。
+- [AI-GEN] **设置页结构**：三卡片包进 `.settings-scroll`（可滚），
+  `.settings-actions` 移出滚动区固定在底部；`#view-settings` 自身 `overflow:hidden`。
+- [AI-GEN] **紧凑化**：卡片 gap 12→11、padding `11px 12px 11px`→`11px 12px 10px`、
+  控件 32→31px、actions padding 6→5px —— 把 867px 窗口下最后 12px 溢出清零
+  （`clientH 466 / scrollH 466`）。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| **Electron 45 起主进程 `clipboard` 变成 Promise 接口**，`readText()` 返回 Promise、`availableFormats` 不存在；旧代码 `typeof text === 'string'` 判假 → `classifyClipboard` 永远是 `null`，e2e 一条 hint 都收不到 | ✅ 加 `readClipboardText()` / `writeClipboardText()` 兼容层（`typeof v.then === 'function'` 再 `await`）；`clipPollOnce` 改 async，用 `clipWatch.busy` 防 3s 定时器叠跑；`pet:copy-text` 改 async 并回读写回 `selfWritten` |
+| 启动瞬间剪贴板里已有的旧内容会被当成「刚复制」立刻吐槽 | ✅ `clipWatch.seeded`：启动先异步读一次播种 `lastText`，播种完成前轮询直接 return |
+| 设置页气泡盖住角色（气泡总高 614 > 可用 581） | ✅ `fitSettingsHeight()` 扣掉 `chrome`（标题栏 + padding），见上；真机复测 `petOverlap = 0` |
+| 气泡封顶后三张卡片在 867px 窗口里仍溢出 12px，「剪贴板吐槽」那行被切一半 | ✅ 结构上把 actions 移出滚动区（按钮不再滚走）+ 紧凑化 11px；最终 `clientH === scrollH`，不需要滚动 |
+| 真机 `capturePage()` 同一进程连拍多张会出现「幽灵方块」（旧帧残留合成） | ✅ 截图脚本独立启动、`showInactive()` 后等 500~700ms 只拍一次；按 `rect × (图像宽/innerWidth)` 裁 |
+| e2e 沿用真实 userData，`pet_speech` / `pet_clip_roast` 被上一轮测试改过的值残留 | ✅ e2e 开头 `removeItem` 三个键 + `webContents.reload()`，再断言默认值 |
+| 单测 harness 里 `offsetHeight` 为 0 让 `chrome` 算成 `NaN` | ✅ 兜底 72，并在单测里补了「量不到布局」的用例 |
+| 单测新增段落用了已存在的同名 `const`（`hv` / `hn`）导致整个文件语法错误 | ✅ 改名 `hz21` / `hnoeng`；单测是单文件脚本，重复 `const` 直接 SyntaxError，不报行号以外的线索 |
+
+### 测试
+- 单测 `node .deepworks/tmp/test-renderer.mjs`：**582 通过 / 0 失败**。
+  新增「场景 K：Phase 3.21」：两开关默认值 / 启动时通知主进程 / hint → `.msg--roast`
+  气泡 / 不抢焦点（`focusCalls` 不变）/ 台词取自 `ROAST_LINES` / 无复制按钮 /
+  指纹去重 / `fireTimers()` 8s 自动收起 / 设置页时静默 / 高度封顶 /
+  关掉后 `setClipboardWatch(false)` 且忽略 hint / TTS 参数（`rate` `pitch` `voice`
+  `lang` `text`）/ `stripMarkdownForSpeech` + `clipForSpeech` 纯函数 /
+  无引擎机器 `speakText === false` + 状态行警告。
+- 真机 `e2e-roast.js`：**37/37 checks**，`problems: []`。
+  覆盖：默认开关值、复制报错 4.2s 内被动弹气泡且 `focusCalls` 不变、
+  `ROAST_LINES` 命中、同内容不重复、600+ 字代码换 `code` 台词、关掉后停轮询、
+  TTS 参数与中文声音、设置页几何（三卡片 / `settingsOuterOverflow === 'hidden'` /
+  `scrollerRect` 与 `actionsRect` 不重叠 / 可滚动）。
+  截图 `.deepworks/tmp/roast/01…06`。
+- 回归（串行跑，单实例锁）：`e2e-electron` `problems: []`、
+  `e2e-pomodoro` 29/29、`e2e-faces` 全 true、`e2e-fling` `problems: []`、
+  `e2e-panic` 17/17。
+
+### 下一步
+- 人工验收两件事：复制报错时她「自己冒出来」的时机是否自然（3s 轮询 + 台词）；
+  语音音色是否够「傲娇小女孩」（嫌太尖就把 `SPEECH_PITCH` 从 1.28 降到 1.15）。
+- 想扩台词库只改 `ROAST_LINES`；想加「复制链接」类别，在 `classifyClipboard` 里
+  加一条 `kind` + 渲染端 `ROAST_LINES` 补一组即可，其余管道不用动。
+
+## Phase 3.22 · 猜拳小游戏（2026-10-23）
+
+### 完成事项
+- [AI-GEN] **牌桌视图**（`#view-game`）：比分行 + `✕` + 判定行（`role=status aria-live=polite`）
+  + 台词行 + 三张手牌 + 收尾两按钮。复用气泡外壳，右键菜单 / 穿透 / 拖拽零改动。
+- [AI-GEN] **判定与台词**：`GAME_BEATS` 查表 + `GAME_LINES`（三条需求原文，一字不改）；
+  表情 `GAME_FACE = { win: sad, lose: pot, draw: idle }`。
+- [AI-GEN] **好感联动**：胜 +3 / 负 −1 / 平 0，走既有 `writeFavor()`，夹 0..100。
+- [AI-GEN] **牌局锁菜单**：`lockMenuForGame()` 置灰五项 + 顶部提示，
+  只留「停止计时」；`handlePetMenuAction()` 里第二道闸防代码误触。
+- [AI-GEN] **不抢面板**：`showBigDialog()` 牌局中只写聊天记录；
+  `checkSleepDeadline()` 牌局中不入睡；`updateBaseState()` 游戏分支优先于番茄钟 / 好感度。
+- [AI-GEN] **等高约束**：`.game-hands` / `.game-actions` 同 `min-height: 62px`、
+  `.game-line` 38px（两行），真机两态 `bubbleRect.h` 完全相等。
+- [AI-GEN] **三路退出**：ESC / ✕ / 【不玩了】→ `endGame(true)`；
+  关气泡 → `resetGameView()` 把表情交还好感度状态机。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| 手牌区 / 结果区都写了 `display:flex`，把 UA 的 `[hidden]{display:none}` 压过 → 「手牌和［再来一局］同时可见」 | ✅ 显式补 `.game-hands[hidden]` / `.game-actions[hidden]` / `.bubble-gear[hidden]`；e2e 用 `getComputedStyle().display` 断言，不只看 `hidden` 属性 |
+| 面板高度变化会让 `measureBubble()` 的命中框过期 →「按钮看得见点不动」 | ✅ 两区同高 + 台词行留两行；`e2e` 断言手牌态与结果态 `bubbleRect.h` 相等 |
+| `updateBaseState` 里游戏分支若排在番茄钟之后，牌桌上表情会被 `code` 抢走 | ✅ 顺序固定为 `airborne > game > pomodoro > sleep/favor` |
+| `showBigDialog()` 会 `setPanel('chat')` + 抢焦点，番茄钟到点直接把牌桌顶掉 | ✅ 牌局中改为 `appendMessage()` + `return false`，不换面板不抢焦点 |
+| 牌局中还能右键开番茄钟 / 查余额，等于中途把面板换走 | ✅ `lockMenuForGame()` 置灰 + `handlePetMenuAction()` 顶部守卫（`pomodoro-stop` 除外） |
+| 点球关气泡后表情停在上一局的 `sad` | ✅ `closeBubble()` 调 `resetGameView()`，随后 `updateBaseState()` 重算 |
+| 单测新增段落与已有场景撞名 `hg` → 整个文件 `SyntaxError: Identifier 'hg' has already been declared` | ✅ 改名 `hz22`；单测是单文件脚本，重复 `const` 直接崩 |
+| 单测 harness 的 mock 元素在 `_doc` 回填范围外（手牌 / 菜单项是后建的），`focus()` 静默失败 → 「焦点在哪」永远拿到 null | ✅ 回填循环改成 `els + handButtons + menuItems` 一起遍历 |
+| 真机里窗口隐藏时 Chromium 不更新 `document.activeElement`，「焦点落在手牌」两条断言恒假 | ✅ 这类断言只留在单测；e2e 改验「三张手牌可点 + `aria-label` 正确」 |
+| 真机截图脚本先开气泡再 `show()`，窗口一显示触发 `blur` → renderer 收起气泡，牌局当场没了（拍出来只有角色） | ✅ 顺序改成 `show()` + `focus()` → 再右键开牌桌 → 截图；窗口全程不 `hide()` |
+| `e2e-pomodoro` 断言「菜单项 5 个」被新加的猜拳项打破 | ✅ 改成 6 个并重跑 29/29 |
+
+### 测试
+- 单测 `node .deepworks/tmp/test-renderer.mjs`：**681 通过 / 0 失败**。
+  新增「场景 L：Phase 3.22」：静态结构（`data-hand` × 3、两处 `[hidden]` 兜底、两区同高）/
+  9 组判定表 / 三条台词原文 / 进牌桌（标题、齿轮隐藏、手牌与结果区互斥、邀请语、`pot`）/
+  出拳（文案、台词、比分、`dataset.kind`、表情、好感 +3 落盘、同局不可重复、
+  不写 `history`、无 `fetch`、无消息）/ 再来一局（复位且比分保留）/
+  好感封顶 100 与保底 0 / 菜单锁定（四项置灰、`stop` 可点、焦点落在 `stop`、
+  置灰项代码触发无效、重复点猜拳不清零）/ 番茄钟到点不抢面板 + 提醒进记录 /
+  牌局中不入睡 / ESC 与关气泡两路退出（表情复位）/ 语音念出输的那句 /
+  退出后菜单恢复。
+- 真机 `e2e-game.js`：**143/143 checks**，`problems: []`。
+  覆盖：右键菜单有入口、牌桌几何（气泡不压角色）、手牌态与结果态 `bubbleRect.h` 相等、
+  至少集齐胜 / 负 / 平各一局（每局校验文案格式、表情图、立绘解码、好感增量、
+  不写聊天记录、不发消息）、菜单锁定与置灰项点击无效、番茄钟在跑时开牌桌
+  （胶囊继续倒计时、到点不抢面板、提醒是原文、停钟后牌局还在）、
+  ESC 退出、点球退出。截图 `.deepworks/tmp/game/01-board.png` /
+  `02-result.png` / `03-menu-locked.png`。
+- 回归（串行跑，单实例锁）：`e2e-pomodoro` 29/29（菜单项 5→6）、
+  `e2e-roast` 37/37、`e2e-electron` / `e2e-faces` / `e2e-fling` / `e2e-panic` 均 exit 0。
+
+### 下一步
+- 人工验收看两件事：牌桌留白（等高的代价）是否能接受；台词语气是否够欠揍。
+- 想加「三局两胜」「连胜彩蛋」只动 `state.game` 与 `playRound()`，视图与菜单锁不用碰。
+
+## Phase 3.23 · 欢呼差分接入（2026-10-23）
+
+### 完成事项
+- [AI-GEN] **新差分**：`assets/pet-cheer.png`（384×384，标准档）、
+  `assets/pet-max-cheer.png`（599×1120，极致档）。双手举起 + 闭眼笑。
+- [AI-GEN] **去水印**：模型在右下角画了「DeepWorks AI」白字 + 阴影。
+  实测矩形内零彩色像素 → 整块填背景色（250 / 252），
+  比按亮度阈值抠字干净（第一版把围裙和丝袜涂白了，还留个白方块）。
+- [AI-GEN] **抠图**：标准档 flood fill 近中性白（保留白描边，384 画布 / 内容长边 360）；
+  极致档 isnet-anime 蒙版 + `--ttest`（边缘过渡带 1.437%），crop bbox 后缩到高 1120。
+- [AI-GEN] **接入点**（`renderer.js`）：`POMO_CHEER_MS = 3000`、`PET_FACES.cheer`、
+  `PET_MAX_FACES.cheer`、`FACE_CHEER`、`GAME_FACE.lose: cheer`、
+  `state.cheerUntil / cheerTimer`、`showCheer()` / `clearCheer()`。
+- [AI-GEN] **优先级**：`updateBaseState()` 新第三层 `airborne > game > cheer > pomodoro > sleep/favor`；
+  欢呼只在 `phase !== POMO_FOCUS` 时生效。
+- [AI-GEN] **三个清理点**：`onPomodoroDone()` 播 3 秒；
+  `applyPomodoroSnapshot()` 见到新开 FOCUS 立刻 `clearCheer()`；
+  `stopPomodoro()` 手动停止也 `clearCheer()`（半路放弃不庆祝）。
+
+### 遇到的问题
+| 问题 | 状态 |
+| --- | --- |
+| 水印按亮度阈值抠，第一版把围裙 / 丝袜一起涂白，还留了个白方块 | ✅ 先扫矩形内是否有彩色像素（结果 0），确认是纯灰白水印 → 整块填背景色 |
+| 极致档原图是 1024×1536，直接缩到高 1120 会带一圈白边 | ✅ `--ttest` 抠图后按 alpha bbox crop，再缩高度（成品 599×1120） |
+| 用 `setTimeout` 的布尔量做「正在欢呼」，后台节流时会忘了复位 | ✅ 改成 `cheerUntil` 时间戳，`updateBaseState()` 每次按 `nowMs()` 重算；定时器只负责到点触发一次重算 |
+| 欢呼若排在游戏之后但不判 `phase`，刚开专注会出现「先举 3 秒手再换 code」 | ✅ 窗口内加 `phase !== POMO_FOCUS` + 开专注时主动 `clearCheer()` |
+| `e2e-pomodoro` 断言「归零 3 秒后回睡姿」，但 `POMO_REST_MS` 默认 2000 → 休息早就结束了，观测不到 | ✅ 测试固定 `POMO_REST_MS=5000`，并补 `sleeping` 字段与 `06b-cheer-gone` 截图断言 |
+| 牌局里 `pomoDone` 触发 `showCheer`，会把她「为番茄钟欢呼」的脸盖到牌桌上 | ✅ cheer 排在 game 之后；单测断言牌桌上仍是 `state.game.face`，随后 `clearCheer()` |
+| 单测里 `Date.now` 与真实时钟耦合，无法直接跳到 3 秒后 | ✅ harness 用 `hT.ev('clearCheer(); updateBaseState()')` 模拟窗口结束，只验「清除后的落点」 |
+
+### 测试
+- 单测 `node .deepworks/tmp/test-renderer.mjs`：**694 通过 / 0 失败**
+  （更新 `pomoSrc.cheer`、专注结束先 cheer 再回落、窗口内新开专注立刻 code、
+  手动停止不欢呼、`pomoStops` 1→2、猜拳 lose 表情与 `src`、`FACE_PACKS[*].cheer` 齐全）。
+- 真机 `e2e-pomodoro.js`：**35/35**，`problems: []`
+  （`POMO_FOCUS_MS=3000 POMO_REST_MS=5000`；`06-focus-done` 欢呼 / `06b-cheer-gone` 睡姿 /
+  `07-rest-done` 回常态 / `08-stopped` 不庆祝）。
+- 真机 `e2e-game.js`：全绿（`FACE_SRC.lose` 改 `pet-cheer.png`）。
+- 回归串行跑：`e2e-faces` / `e2e-electron` / `e2e-roast` / `e2e-fling` / `e2e-panic` 全部 exit 0 且 `problems: []`。
+- 视觉确认截图：`.deepworks/tmp/pomo/06*.png`、`.deepworks/tmp/cheer/cheer-high.png` / `cheer-max-full.png`。
+
+### 下一步
+- 人工验收重点：3 秒窗口够不够看清、专注结束到睡姿的切换会不会显得「刚伸完懒腰就睡」。
+- 想把欢呼扩展到「讨好 +10」「连胜」只需再调 `showCheer()`，界面不动。

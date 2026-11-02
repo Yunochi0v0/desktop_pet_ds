@@ -429,6 +429,11 @@ body.bubble-open .bubble[data-arrow="up"] .bubble-inner {
   transform: translateY(0) scale(1);
 }
 
+/* [FIX 2026-11-02] 同上一轮误删：待办面板把气泡挤到侧面时，尾巴要藏起来 */
+.bubble--side .bubble-inner::after {
+  display: none;
+}
+
 .bubble[data-arrow="up"] .bubble-inner::after {
   top: -11px;
   clip-path: inset(0 0 48% 0);
@@ -441,10 +446,66 @@ body.bubble-open .bubble[data-arrow="up"] .bubble-inner {
   gap: 6px;
 }
 
-/* 齿轮靠右：用 margin-left:auto 把它推到行尾，
-   这样标题无论长短，齿轮都在同一个位置（符合「设置」类按钮的肌肉记忆）。 */
-.bubble-gear {
+/* 标题可以被页签挤窄：宁可省略号，也不让聊天 / 待办按钮掉出气泡 */
+.bubble-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 标题栏右侧：聊天 / 待办页签 + 齿轮。整体靠右，齿轮不再自己抢 auto。 */
+.bubble-head-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bubble-tabs {
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 999px;
+  background: #eef1f8;
+}
+
+/* hidden 必须显式压回 display:none：上面写了 display:flex */
+.bubble-tabs[hidden] {
+  display: none;
+}
+
+.bubble-tab {
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1.5;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.bubble-tab:hover:not(.is-active) {
+  color: var(--brand);
+}
+
+.bubble-tab.is-active {
+  background: var(--surface);
+  color: var(--brand);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(23, 33, 72, 0.12);
+}
+
+/* 齿轮靠右：外层的 .bubble-head-actions 已经把它推到行尾。
+   这里归零，避免和页签之间再被 auto margin 顶开。 */
+.bubble-gear {
+  margin-left: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -471,12 +532,12 @@ body.bubble-open .bubble[data-arrow="up"] .bubble-inner {
 }
 
 /* -----------------------------------------------------------------------------
-   Phase 3：两个视图的切换
+   Phase 3：气泡视图的切换
 
    ⚠️ 关键的一行是 .bubble-view[hidden] { display: none }。
       因为下面给 .bubble-view 设了 display:flex，而**作者样式会压过
       [hidden] 属性自带的 display:none**（两者优先级相同，后者是 UA 样式）。
-      漏掉这一行的话，hidden 属性就完全失效，两个视图会同时显示、叠在一起。
+      漏掉这一行的话，hidden 属性就完全失效，多个视图会同时显示、叠在一起。
    ----------------------------------------------------------------------------- */
 .bubble-view {
   display: flex;
@@ -877,13 +938,10 @@ body.bubble-open .bubble[data-arrow="up"] .bubble-inner {
 
 /* =============================================================================
    Phase 3：设置界面（API key）
+   =============================================================================
+   Phase 3.20 起，设置页的布局（卡片 / 字段 / 按钮）全部挪到文件末尾的
+   「Phase 3.20：设置面板重排」区块，这里只留输入框本身的基础样式。
    ============================================================================= */
-
-.bubble-label {
-  font-size: 11.5px;
-  color: var(--ink-2);
-  line-height: 1.45;
-}
 
 /* key 输入框：单行、矮一点，字母之间稍微拉开，方便检查有没有粘错 */
 .bubble-input--key {
@@ -974,11 +1032,6 @@ body.bubble-open .bubble[data-arrow="up"] .bubble-inner {
   pointer-events: none; /* 别挡住点击，命中判定要落在 <select> 上 */
 }
 
-/* 设置页里的段落间距比聊天区紧一点，三条内容（key / 深度 / 状态）要能一屏看完 */
-#view-settings .key-status {
-  margin-top: -2px;
-}
-
 /* 思考深度状态行：允许两行，第二行是「已记住 / 会展示推理」这类补充信息。
    不用自动折行（CJK 会在词中间断开，例如「显示思 / 考过程」）。 */
 #depth-status {
@@ -998,27 +1051,8 @@ body.bubble-open .bubble[data-arrow="up"] .bubble-inner {
   color: #d9534f;
 }
 
-/* 「清除」按钮：做成文字链的样子，视觉权重明显低于「保存」——
-   免得手一滑把 key 清掉。
-   ⚠️ 类名刻意不叫 .bubble-link：那个名字已经被 Markdown 的「链接文字」占了，
-      同名会互相污染（清除按钮会变成品牌蓝下划线样式）。 */
-.bubble-ghost {
-  padding: 4px 2px;
-  border: none;
-  background: transparent;
-  color: var(--ink-2);
-  font-family: inherit;
-  font-size: 11.5px;
-  text-decoration: underline;
-  text-decoration-color: var(--line);
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.bubble-ghost:hover {
-  color: #d9534f;
-  text-decoration-color: rgba(217, 83, 79, 0.4);
-}
+/* 「清除」类的文字按钮在 Phase 3.20 换成了 .settings-link / .settings-danger，
+   旧类 .bubble-ghost 已无引用，随设置面板重排一起删除。 */
 
 /* 尊重系统的「减少动态效果」偏好 */
 @media (prefers-reduced-motion: reduce) {
@@ -1058,9 +1092,2058 @@ body.bubble-open .bubble[data-arrow="up"] .bubble-inner {
     transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* -----------------------------------------------------------------------------
+   [AI-GEN] Phase 3.15：撞墙挤压（Q 弹）
+
+   为什么挂在 .pet-core 而不是 #pet：
+     #pet 的 transform 被 rAF 的 translate3d 独占，再写 scale 会把位移覆盖掉；
+     .pet-core 是内层动画层，和 idle-breathe 抢同一个属性不会碰到定位。
+
+   一个 animation 同时完成「挤压 → 回弹 → 静止」：
+     · 13% 是最大形变点 —— 纵向撞墙用需求指定的 scale(1.1, 0.9)（压扁变胖），
+       横向撞墙用镜像的 scale(0.88, 1.12)（压窄变高），才符合撞击方向；
+     · 之后 38% / 62% / 82% 是逐级收敛的过冲（0.96 → 1.02 → 0.995），
+       这就是「Q 弹」的来源；
+     · 100% 回到 scale(1, 1)，移除类后无缝接回 idle-breathe。
+   时长必须与 renderer.js 的 IMPACT_SQUASH_MS（460）一致。
+   时间函数带轻微 overshoot：压下去是快的，弹回来是慢的。
+   ----------------------------------------------------------------------------- */
+.pet-core.impact-x {
+  animation: impact-squash-x 460ms cubic-bezier(0.22, 1.35, 0.36, 1) both;
+}
+
+.pet-core.impact-y {
+  animation: impact-squash-y 460ms cubic-bezier(0.22, 1.35, 0.36, 1) both;
+}
+
+/* 左右撞墙：沿运动方向（横轴）压扁 */
+@keyframes impact-squash-x {
+  0% {
+    transform: scale(1, 1);
+  }
+  13% {
+    transform: scale(0.88, 1.12);
+  }
+  38% {
+    transform: scale(1.05, 0.96);
+  }
+  62% {
+    transform: scale(0.98, 1.02);
+  }
+  82% {
+    transform: scale(1.01, 0.995);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+/* 上下落地：沿纵轴压扁，最大形变点就是需求里的 scale(1.1, 0.9) */
+@keyframes impact-squash-y {
+  0% {
+    transform: scale(1, 1);
+  }
+  13% {
+    transform: scale(1.1, 0.9);
+  }
+  38% {
+    transform: scale(0.96, 1.05);
+  }
+  62% {
+    transform: scale(1.02, 0.98);
+  }
+  82% {
+    transform: scale(0.995, 1.01);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+/* 挤压时整窗光标不再是抓取态（宠物在飞，手已经松开了） */
+#pet.flinging {
+  cursor: grab;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #pet.snapping,
   .bubble.snapping {
     transition: none;
+  }
+
+  /* JS 层已经不会触发惯性/挤压，这里再兜一层：系统要求减少动效时绝不形变 */
+  .pet-core.impact-x,
+  .pet-core.impact-y {
+    animation: none;
+  }
+}
+/* -----------------------------------------------------------------------------
+   Phase 3.16：基础状态机（四张表情）
+   -----------------------------------------------------------------------------
+   换图本身由 JS 完成（预解码 + 原子替换），这里只补两层「让变化看起来自然」
+   的视觉，不参与任何状态判断 —— 优先级全在 renderer.js 的 updateBaseState 里。 */
+
+/* 换表情时的一下淡入。
+   ⚠️ 只动 opacity，绝不碰 transform / filter：
+      transform 是 thinking 摇头和立绘 scale(1.1) 的领地，
+      filter 是悬停高亮和 thinking 光晕的领地，碰哪个都会互相打断。 */
+.pet-sprite.face-swap {
+  animation: face-in 180ms ease-out;
+}
+
+@keyframes face-in {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 睡着：整只宠儿慢下来。
+   挂在 .pet-core 上而不是 .pet-sprite 上，和 idle-breathe / impact-* 用
+   「同名属性互相覆盖」的规则切换，碰不到 #pet 的 translate3d 定位。
+   周期拉到 4.8s、幅度压到 2px —— 睡觉就该是几乎看不出来的起伏。 */
+#pet.sleeping .pet-core {
+  animation: sleep-breathe 4.8s ease-in-out infinite;
+}
+
+@keyframes sleep-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(2px) scale(1.012);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 对动效敏感的人：换图直接切、睡觉不呼吸（图片本身已经是睡姿，足够表意） */
+  .pet-sprite.face-swap,
+  #pet.sleeping .pet-core {
+    animation: none;
+  }
+}
+
+/* =============================================================================
+   Phase 3.18：番茄钟
+     · .pomo-chip   —— 角色头顶（或脚下）的倒计时小胶囊，纯展示
+     · .pet-menu    —— 右键菜单（普通 DOM，不是原生 Menu）
+     · #bubble.bubble--big —— 计时归零时的「大号对话框」
+
+   小胶囊和气泡都用 visibility 保留布局尺寸，不用 display:none：
+   定位前需要 offsetWidth / offsetHeight，display:none 量出来是 0。
+   ============================================================================= */
+
+.pomo-chip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+
+  /* 压在立绘之上、聊天气泡之下：
+     真撞上时（屏幕太小、上下都放不下）宁可被气泡盖住，也不许挡住对话内容。 */
+  z-index: 1;
+  pointer-events: none; /* 只是状态条，鼠标直接穿透 */
+  user-select: none;
+  white-space: nowrap;
+
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(31, 36, 48, 0.86);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+  /* 等宽数字：否则 1 和 8 的宽度差会让胶囊每秒抖一下 */
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  box-shadow: 0 6px 16px rgba(23, 33, 72, 0.28);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+
+.pomo-chip.is-on {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 休息中用暖色，扫一眼就知道该起来活动了（不是还在计时干活） */
+.pomo-chip[data-phase="resting"] {
+  background: rgba(214, 122, 33, 0.9);
+}
+
+/* =============================================================================
+   [AI-GEN] Phase 3.27：天气页（#bubble 的第六个视图）
+   =============================================================================
+   天气从「独立毛玻璃卡片」改成气泡里的第六个视图（#view-weather）：
+     · 和聊天 / 待办 / 设置共用同一只 #bubble，不再另开窗口、不再单独定位；
+     · 背景随 weather.kind 切换（sunny / cloudy / rain / snow / fog / storm）；
+     · 每类天气有自己的动态层，元素由 renderer 的 renderWeatherFx() 生成，
+       这里只负责「长什么样」——雨滴 / 雪花 / 云团 / 雾带 / 太阳 / 闪电。
+
+   ⚠️ 所有动效都必须在 prefers-reduced-motion 下整体关掉（见文件末尾）。
+   ============================================================================= */
+
+/* 对话框宽度：和待办页保持一致，仍是同一只气泡 */
+#bubble.bubble--weather {
+  --bubble-w: min(342px, calc(100vw - 8px));
+}
+
+/* 气泡外壳沿用待办的深色皮肤：天气页自己那层天气底色才是主角 */
+#bubble.bubble--weather .bubble-inner {
+  color: #eef1ff;
+  border-color: rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(158deg, rgba(56, 64, 92, 0.9) 0%, rgba(24, 28, 43, 0.93) 52%, rgba(17, 20, 32, 0.95) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
+  filter: drop-shadow(0 18px 42px rgba(8, 11, 24, 0.42))
+    drop-shadow(0 2px 6px rgba(8, 11, 24, 0.24));
+}
+
+#bubble.bubble--weather .bubble-inner::after {
+  background: #181c2b;
+}
+
+#bubble.bubble--weather .bubble-title {
+  color: #eef1ff;
+}
+
+#bubble.bubble--weather .bubble-dot {
+  background: #9fd0ff;
+  box-shadow: 0 0 8px rgba(159, 208, 255, 0.7);
+}
+
+#bubble.bubble--weather .bubble-tabs {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* —— 天气页本体 —— */
+.weather-view {
+  padding: 0;
+}
+
+.weather-page {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 268px;
+  border-radius: 14px;
+  color: #f2f5ff;
+  background: linear-gradient(168deg, #5a6b8c 0%, #3a4661 100%);
+  transition: background 0.55s ease;
+}
+
+/* 各天气类型的底色 */
+.weather-page[data-kind="sunny"] {
+  background: linear-gradient(168deg, #6ea8e8 0%, #9fc6f0 55%, #f6d99a 100%);
+}
+.weather-page[data-kind="cloudy"] {
+  background: linear-gradient(168deg, #7d8aa3 0%, #a8b4c8 100%);
+}
+.weather-page[data-kind="rain"] {
+  background: linear-gradient(168deg, #4d5a72 0%, #2f3a4d 100%);
+}
+.weather-page[data-kind="storm"] {
+  background: linear-gradient(168deg, #2f3547 0%, #1b2030 100%);
+}
+.weather-page[data-kind="snow"] {
+  background: linear-gradient(168deg, #8fa4c4 0%, #cdd9ea 100%);
+}
+.weather-page[data-kind="fog"] {
+  background: linear-gradient(168deg, #78808e 0%, #aab2bd 100%);
+}
+.weather-page[data-kind="error"] {
+  background: linear-gradient(168deg, #4a5265 0%, #333a49 100%);
+}
+.weather-page[data-kind="loading"] {
+  background: linear-gradient(168deg, #5c6880 0%, #414c62 100%);
+}
+
+/* 背景场景层：绝对铺满，鼠标穿透（点上去等于点气泡本身） */
+.weather-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.weather-sky,
+.weather-fx {
+  position: absolute;
+  inset: 0;
+}
+
+/* —— 雨滴 —— */
+.rain-drop {
+  position: absolute;
+  left: var(--x, 50%);
+  top: -14%;
+  width: 2px;
+  height: var(--len, 14px);
+  border-radius: 1px;
+  background: linear-gradient(180deg, rgba(220, 238, 255, 0) 0%, rgba(220, 238, 255, 0.95) 100%);
+  opacity: var(--op, 0.5);
+  animation: weather-rain-fall var(--dur, 1s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes weather-rain-fall {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(780%);
+  }
+}
+
+/* —— 雪花 —— */
+.snow-flake {
+  position: absolute;
+  left: var(--x, 50%);
+  top: -8%;
+  width: var(--size, 4px);
+  height: var(--size, 4px);
+  border-radius: 50%;
+  background: #ffffff;
+  opacity: var(--op, 0.8);
+  animation: weather-snow-fall var(--dur, 8s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes weather-snow-fall {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(var(--drift, 10px), 820%);
+  }
+}
+
+/* —— 云团 —— */
+.cloud-puff {
+  position: absolute;
+  left: var(--x, 20%);
+  top: var(--y, 10%);
+  width: var(--w, 80px);
+  height: var(--h, 28px);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  opacity: var(--op, 0.2);
+  filter: blur(6px);
+  animation: weather-cloud-drift var(--dur, 14s) ease-in-out infinite alternate;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes weather-cloud-drift {
+  0% {
+    transform: translateX(-8%);
+  }
+  100% {
+    transform: translateX(10%);
+  }
+}
+
+/* —— 雾带 —— */
+.fog-band {
+  position: absolute;
+  left: -20%;
+  top: var(--y, 20%);
+  width: 140%;
+  height: var(--h, 30px);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  opacity: var(--op, 0.2);
+  filter: blur(10px);
+  animation: weather-fog-drift var(--dur, 10s) ease-in-out infinite alternate;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes weather-fog-drift {
+  0% {
+    transform: translateX(-6%);
+  }
+  100% {
+    transform: translateX(6%);
+  }
+}
+
+/* —— 晴天：太阳光晕 —— */
+.sun-core {
+  position: absolute;
+  right: 11%;
+  top: 8%;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff8d0 0%, #ffd75e 46%, rgba(255, 215, 94, 0) 72%);
+  animation: weather-sun-pulse 6s ease-in-out infinite alternate;
+}
+
+.sun-rays {
+  position: absolute;
+  right: 2%;
+  top: -1%;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 238, 165, 0.55) 0%, rgba(255, 238, 165, 0) 66%);
+  animation: weather-sun-spin 20s linear infinite;
+}
+
+@keyframes weather-sun-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes weather-sun-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* —— 雷雨：闪电 —— */
+.lightning {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  animation: weather-lightning-flash 7s steps(1, end) infinite;
+}
+
+@keyframes weather-lightning-flash {
+  0%,
+  90%,
+  100% {
+    opacity: 0;
+  }
+  91% {
+    opacity: 0.72;
+  }
+  92% {
+    opacity: 0;
+  }
+  94% {
+    opacity: 0.55;
+  }
+  95% {
+    opacity: 0;
+  }
+}
+
+/* —— 内容区（压在动态层之上）—— */
+.weather-content {
+  position: relative;
+  z-index: 1;
+  padding: 13px 15px 15px;
+}
+
+.weather-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Phase 3.28：这里从写死的城市名变成可点的「切换地区」按钮 */
+.weather-loc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 62%;
+  padding: 3px 9px 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: rgba(240, 245, 255, 0.9);
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.weather-loc:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.weather-loc:focus-visible {
+  outline: 2px solid rgba(159, 208, 255, 0.75);
+  outline-offset: 2px;
+}
+
+.weather-loc-name {
+  max-width: 11em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weather-loc-hint {
+  flex: 0 0 auto;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.weather-loc[aria-expanded='true'] .weather-loc-hint {
+  opacity: 0.95;
+}
+
+.weather-loc-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9fd0ff;
+  box-shadow: 0 0 6px rgba(159, 208, 255, 0.9);
+}
+
+.weather-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.weather-btn {
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #eef3ff;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.weather-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.weather-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.weather-btn--close {
+  padding: 4px 9px;
+}
+
+/* -----------------------------------------------------------------------------
+   Phase 3.28：地区选择浮层
+   铺满整张天气页（.weather-page 是 position: relative + overflow: hidden），
+   所以它天然被气泡的命中检测覆盖，也不需要单独处理「点它穿透不穿透」。
+   ----------------------------------------------------------------------------- */
+.weather-btn--go {
+  flex: 0 0 auto;
+  background: rgba(120, 180, 255, 0.28);
+  border-color: rgba(159, 208, 255, 0.45);
+}
+
+.weather-btn--go:hover {
+  background: rgba(120, 180, 255, 0.42);
+}
+
+.weather-loc-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 15px 15px;
+  /* 不透明一点 + 模糊：底下那排天气读数不该透出来和列表抢注意力 */
+  background: rgba(9, 14, 27, 0.97);
+  backdrop-filter: blur(6px);
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.weather-loc-panel[hidden] {
+  display: none;
+}
+
+.weather-loc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.weather-loc-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eaf1ff;
+}
+
+.weather-loc-form {
+  display: flex;
+  gap: 6px;
+}
+
+.weather-loc-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: #f2f6ff;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.weather-loc-input::placeholder {
+  color: rgba(226, 235, 255, 0.45);
+}
+
+.weather-loc-input:focus {
+  outline: none;
+  border-color: rgba(159, 208, 255, 0.7);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.weather-loc-input:disabled {
+  opacity: 0.6;
+}
+
+.weather-loc-status {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(226, 235, 255, 0.72);
+}
+
+.weather-loc-status[hidden] {
+  display: none;
+}
+
+.weather-loc-status.is-busy {
+  color: #9fd0ff;
+}
+
+.weather-loc-results {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  margin: 0;
+  padding: 0 2px 0 0;
+  overflow: hidden auto;
+  list-style: none;
+}
+
+.weather-loc-item {
+  margin: 0;
+}
+
+.weather-loc-option {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef3ff;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.weather-loc-option:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.weather-loc-item.is-current .weather-loc-option {
+  border-color: rgba(159, 208, 255, 0.6);
+  background: rgba(120, 180, 255, 0.18);
+}
+
+.weather-loc-option-name {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.weather-loc-option-sub {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: rgba(226, 235, 255, 0.6);
+}
+
+.weather-loc-quick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.weather-loc-quick-label {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: rgba(226, 235, 255, 0.55);
+}
+
+.weather-loc-quick-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.weather-loc-chip {
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #eef3ff;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.weather-loc-chip:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.weather-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.weather-icon {
+  font-size: 34px;
+  line-height: 1;
+  filter: drop-shadow(0 3px 6px rgba(10, 16, 32, 0.32));
+}
+
+.weather-reading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.weather-temp {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(240, 245, 255, 0.82);
+}
+
+/* [FIX 2026-11-02] 上一轮替换天气样式时漏掉了状况标签的样式 */
+.weather-cond {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 1px 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(240, 245, 255, 0.95);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.weather-cond[hidden] {
+  display: none;
+}
+
+.weather-place {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.weather-date {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: rgba(240, 245, 255, 0.86);
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-body {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #f4f7ff;
+}
+
+/* 天气页里的旁白：和待办页顶部那句同一套「入场动画」 */
+.weather-say {
+  margin: 8px 0 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #f6f9ff;
+}
+
+.weather-say.is-new {
+  animation: weather-say-in 0.26s ease;
+}
+
+@keyframes weather-say-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.weather-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  color: rgba(236, 242, 255, 0.66);
+  font-variant-numeric: tabular-nums;
+}
+
+/* —— 减少动态效果：所有天气动效一起停 —— */
+@media (prefers-reduced-motion: reduce) {
+  .rain-drop,
+  .snow-flake,
+  .cloud-puff,
+  .fog-band,
+  .sun-core,
+  .sun-rays,
+  .lightning,
+  .weather-say.is-new {
+    animation: none !important;
+  }
+
+  .weather-page {
+    transition: none;
+  }
+}
+
+/* =============================================================================
+   右键菜单（Phase 3.18）
+   ⚠️ [FIX 2026-11-02] 上一轮把「天气卡片」样式整段换成天气页样式时，
+      这一段被连带删掉了，菜单退化成浏览器默认按钮（白底、横排）。
+      以下按事故前原文补回；z-index 保持 Phase 3.24 调过的 40。
+   ============================================================================= */
+
+.pet-menu {
+  position: fixed;
+  left: 0;
+  top: 0;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  /* [MANUAL] 菜单必须压在聊天气泡（含待办页）上面，否则右键出来的
+     按钮会被气泡挡住、点不到。再往上只有 50（预留给系统级浮层）。 */
+  z-index: 40; /* 菜单必须能盖住气泡，否则点不到 */
+  min-width: 148px;
+  padding: 6px;
+
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 30px var(--shadow), 0 2px 6px rgba(23, 33, 72, 0.08);
+
+  /* 用 visibility 而不是 display:none：打开前要测宽高再定位，
+     否则第一帧会出现在 (0,0) 再跳过去。 */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+}
+
+.pet-menu.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.pet-menu-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  /* 桌面宠的窗口是无边框的，按钮默认的 focus 外框会很突兀；
+     键盘用户靠 :focus-visible 单独给一圈，见下。 */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.pet-menu-item:hover {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.pet-menu-item:active {
+  background: #e2e9ff;
+}
+
+.pet-menu-item:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+.pet-menu-sep {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--line);
+}
+
+/* ---- 计时归零的「大号对话框」 ------------------------------------------------
+   复用同一个 #bubble，只加一个类放大：不新开元素，才能继续享受
+   已有的定位 / 尾巴 / 淡入逻辑。宽度变了，renderer.js 会重新 measureBubble()。 */
+#bubble.bubble--big {
+  --bubble-w: 356px;
+}
+
+#bubble.bubble--big .bubble-inner {
+  border-color: #ffd9a8;
+  filter: drop-shadow(0 14px 30px rgba(214, 120, 20, 0.3))
+    drop-shadow(0 2px 6px rgba(23, 33, 72, 0.08));
+  /* 轻微放大一圈，读起来更像「被拍了一下肩膀」 */
+  animation: bubble-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes bubble-pop {
+  0% {
+    scale: 0.92;
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+#bubble.bubble--big .msg--assistant .msg-body,
+#bubble.bubble--big .msg-text {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pomo-chip,
+  .pet-menu {
+    transition: none;
+  }
+
+  #bubble.bubble--big .bubble-inner {
+    animation: none;
+  }
+}
+
+/* =============================================================================
+   Phase 3.20：设置面板重排（卡片化 + 层级）
+   =============================================================================
+   旧版的问题不是「控件不好看」，而是**没有分组**：key、深度、记忆、清除、保存
+   五个东西平铺在一个 flex 列里，间距全靠同一个 gap，眼睛没有落点。
+
+   这次只动三件事（功能逻辑一行没改）：
+     ① 两张卡片：API 与模型 / 记忆管理 —— 用底色和圆角把「同一件事」框在一起；
+     ② 间距分两级：卡片之间 10px、卡片内元素 14px、字段内部 6px，
+        层级越大间距越大，视觉上自然成段；
+     ③ 主按钮收口到右下角，危险按钮留在它所属的卡片里（不再和保存并排）。
+
+   颜色全部走 --ink / --ink-2 的透明度（color-mix），所以换主题变量时卡片
+   底色会跟着变，不需要为深色模式再写一套：
+     浅色：--ink 是 #1f2430  → 卡片是极淡的冷灰
+     深色：--ink 变成浅色     → 卡片自然变成「白雾」
+   ============================================================================= */
+
+/* 卡片之间比卡片内更松：这是「分组」看得出来的关键 */
+#view-settings.settings {
+  gap: 10px;
+}
+
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  /* Phase 3.21：从 14/12/13 收到 12/12/11 —— 三张卡片一共省出 ≈28px，
+     刚好让 867 高的窗口不用滚动就能看到「声音与提醒」整张卡片 */
+  gap: 11px;
+  padding: 11px 12px 10px;
+  border-radius: 14px;
+  /* 兜底：不认 color-mix 的引擎用这层固定浅灰 */
+  background: #f7f8fc;
+  border: 1px solid #eceffa;
+}
+
+@supports (background: color-mix(in srgb, red 5%, transparent)) {
+  .settings-card {
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    border-color: color-mix(in srgb, var(--ink) 6%, transparent);
+  }
+}
+
+/* 卡片标题行：左边标题，右边一行小字（「本机保存」/「记忆 N 条 · 最近 5 轮…」） */
+.settings-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings-card-title {
+  /* 用小号 + 深色做层级，而不是加大字号 —— 气泡总宽只有 300px，
+     标题一大就会把右侧的辅助信息挤掉 */
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.settings-card-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.settings-card-dot {
+  color: var(--line);
+}
+
+/* 一个字段 = 标签 + 控件 + 提示，三者贴在一起，和下一个字段隔 12px */
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-label {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+/* 统一高度：输入框 / 下拉框 / 按钮都是 36px，横向排在一起时基线才齐。
+   ⚠️ 特异性要比 .bubble-input--key(34px) 和 .bubble-select(34px) 高，
+      否则高度会被它们压回 34。 */
+.settings .settings-control {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px; /* 和卡片圆角同一套语言，输入框不再比卡片还圆 */
+  /* 白底 + 细边：和下拉框用同一套「控件皮肤」，
+     旧版输入框是浅灰无边框、下拉框是白底有边框，并排放着不像一家人。
+     边框用 --ink 的透明度而不是写死 #e6e9f2，换主题变量时一起变。 */
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12.5px;
+}
+
+.settings .settings-control:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.14);
+}
+
+/* 状态提示：常态灰字，出错/成功由 data-kind 换色（规则在 .key-status 那边） */
+.settings-note {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* key 那一行：左边提示文字（可压缩），右边「清除」文字按钮（不压缩、不被顶走） */
+.settings-note--row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-note--row .key-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10.5px;
+}
+
+/* 设置页里的状态行不再需要负 margin 顶上去（间距交给 gap） */
+#view-settings .key-status {
+  margin: 0;
+}
+
+/* 「已保存 / 已记住」这类成功提示也走灰字 ——
+   设置页的层级靠字号和颜色深浅撑起来，绿色会把辅助信息抬成「第二重点」，
+   和用户要的「小号灰字」冲突。只有 warn / error 保留颜色（那是真的要看一眼）。 */
+#view-settings .key-status[data-kind="ok"] {
+  color: var(--ink-2);
+}
+
+/* 清除 key：低频 + 有破坏性，所以只给一条文字链，鼠标悬停才变红 */
+.settings-link {
+  flex: none;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.settings-link:hover {
+  color: #d9534f;
+  text-decoration-color: rgba(217, 83, 79, 0.5);
+}
+
+.settings-link:focus-visible {
+  outline: 2px solid rgba(217, 83, 79, 0.4);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 危险操作：描边 + 浅红底，不用实心红 ——
+   实心红会把「保存设置」这个真正的主按钮压下去，也会让人误以为它是主操作。
+   悬停时底色加深（0.05 → 0.10），按下再缩 1.5%，给一点物理反馈防误触。 */
+.settings-danger {
+  align-self: flex-start;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(217, 83, 79, 0.35);
+  background: rgba(217, 83, 79, 0.05);
+  color: #c94a46;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.settings-danger:hover {
+  background: rgba(217, 83, 79, 0.1);
+  border-color: rgba(217, 83, 79, 0.55);
+}
+
+.settings-danger:active {
+  transform: scale(0.985);
+}
+
+.settings-danger:focus-visible {
+  outline: 2px solid rgba(217, 83, 79, 0.45);
+  outline-offset: 2px;
+}
+
+/* 底部：整个面板唯一的实心主按钮，靠右对齐（右下角是桌面 App 的「确认」位置） */
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.settings .settings-save {
+  height: 34px;
+  min-width: 96px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(77, 107, 254, 0.22);
+}
+
+.settings .settings-save:hover:not(:disabled) {
+  box-shadow: 0 3px 10px rgba(77, 107, 254, 0.28);
+}
+
+/* 减少动态效果：按下缩放也去掉 */
+@media (prefers-reduced-motion: reduce) {
+  .settings-danger,
+  .settings-save {
+    transition: none;
+  }
+
+  .settings-danger:active {
+    transform: none;
+  }
+}
+
+/* =============================================================================
+   Phase 3.21：剪贴板吐槽 + 声音设置
+   =============================================================================
+   这一阶段界面只多了两样东西：
+     ① 设置页第三张卡片「声音与提醒」，两个下拉框做成「标签在左、控件在右」的行式 ——
+        气泡总宽 300px，按「标签在上」排会把设置页顶到 ≈600px，翻到角色身上；
+     ② 聊天流里的「吐槽」消息（.msg--roast）：她自己在旁边嘀咕的话，
+        和「助手回答」要一眼区分开，所以用虚线边 + 斜体，不给复制按钮。
+   另外给设置页加了「按角色头顶可用高度封顶 + 内部滚动」（见 renderer 的
+   fitSettingsHeight），屏幕小的时候不至于把鲸鱼盖住。
+   ============================================================================= */
+
+/* 行式字段：标签固定宽度，控件吃掉剩下的宽度，两行之间靠卡片的 gap 撑开 */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-row .settings-label {
+  /* 不参与压缩：文案被挤成「语音播 / 报」比换行还难看 */
+  flex: 0 0 58px;
+}
+
+.settings-row .bubble-select-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 行式控件比整行控件矮 4px：它旁边有标签，36px 会显得笨重。
+   ⚠️ 选择器要和 `.settings .settings-control` 同特异性（0,2,0），
+      靠「写在后面」生效 —— 所以这段必须在文件末尾。 */
+.settings-row .settings-control {
+  height: 31px;
+  min-height: 31px;
+  font-size: 12px;
+}
+
+/* 空的状态行不占位：设置页每多一行 14px 的 gap，60px 屏幕就少一行内容 */
+#view-settings .settings-note:empty {
+  display: none;
+}
+
+/* 设置页超高时内部滚动。
+   max-height 由 renderer.fitSettingsHeight() 写进 style（按角色头顶算）。
+   ⚠️ 滚动的是内层 .settings-scroll，不是 #view-settings 本身 ——
+      否则「保存设置」这条会跟着内容滚，或者用 sticky 硬压在卡片上，
+      露出半截下拉框（Phase 3.21 踩过）。 */
+#view-settings.settings {
+  overflow: hidden;
+}
+
+#view-settings.settings .settings-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  /* 滚动条不占布局宽度（overlay 风格），否则卡片会被挤窄 6px 而和其它页不一致 */
+  scrollbar-width: thin;
+}
+
+#view-settings.settings .settings-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+#view-settings.settings .settings-scroll::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: rgba(31, 36, 48, 0.16);
+}
+
+#view-settings.settings .settings-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(31, 36, 48, 0.28);
+}
+
+#view-settings.settings .settings-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 保存按钮在滚动区之外：卡片列表再长也压不到它，它也不会压住卡片 */
+#view-settings.settings .settings-actions {
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding: 5px 0 2px;
+  background: var(--surface);
+}
+
+/* 吐槽：她随口嘀咕的一句，不是「回答」。
+   虚线边框 + 斜体 + 更小的字号，扫一眼就知道「这句不用复制」。 */
+.msg--roast {
+  align-self: flex-start;
+  max-width: 92%;
+  color: #4b5372;
+  background: #f3f6ff;
+  border: 1px dashed rgba(77, 107, 254, 0.3);
+  border-bottom-left-radius: 5px;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* 减少动态效果：这个模块没有动画，只是把吸底条的滚动行为恢复成默认 */
+@media (prefers-reduced-motion: reduce) {
+  #view-settings.settings .settings-scroll {
+    scroll-behavior: auto;
+  }
+}
+
+/* =============================================================================
+   Phase 3.22：猜拳小游戏
+   =============================================================================
+   面板就是气泡的第四个视图（#view-game），毛玻璃、圆角、尾巴全部继承
+   .bubble-inner，这里只画「牌桌」本身：三个出拳按钮 + 结果文字 + 结束后的两个选项。
+
+   两条硬约束（都是踩过的坑）：
+     ① **高度必须稳定**。气泡的命中框来自 measureBubble()，只在 setPanel /
+        relayoutBubble 时更新；如果「出拳前」和「出结果后」高度差一大截，
+        新长出来的按钮会落在一个过期的命中框外面 —— 表现就是「按钮看得见、点不动」。
+        所以 .game-hands 和 .game-actions 都钉住 min-height: 62px，结果区也留固定行高，
+        整块面板在任何状态下都一样高。
+     ② **hidden 要显式写 display:none**。下面给了 flex，作者样式会压过 UA 的
+        [hidden]，漏掉的话出拳按钮和「再来一局」会同时出现。
+   ============================================================================= */
+
+.game {
+  /* 牌桌背景比聊天页稍亮一点：蓝白渐隐，像桌面摊开的一块布 */
+  background: linear-gradient(180deg, rgba(246, 249, 255, 0.9), rgba(255, 255, 255, 0));
+  border-radius: 14px;
+}
+
+/* 标题行：左边是比分 / 提示，右边是 [X] */
+.game-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.game-score {
+  min-width: 0;
+  font-size: 11px;
+  color: var(--ink-2);
+  letter-spacing: 0.01em;
+  /* 比分只在每局结束时才变一次，但文案长度会变（还没开局 → 1 胜 1 负）
+     —— 单行省略比换行好看，反正真正的信息在下面的结果区 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-score[data-kind="win"] {
+  color: #2f9e6f;
+}
+
+.game-score[data-kind="lose"] {
+  color: #c94a46;
+}
+
+/* [X]：不抢眼，但永远在同一个位置（右上角 = 关面板的惯例） */
+.game-close {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.game-close:hover {
+  color: #c94a46;
+  background: rgba(217, 83, 79, 0.1);
+}
+
+.game-close:focus-visible {
+  outline: 2px solid rgba(77, 107, 254, 0.45);
+  outline-offset: 1px;
+}
+
+/* 结果区：固定行高，保证「出拳前 / 出结果后」面板高度一致（见上面的约束①） */
+.game-moves {
+  min-height: 16px;
+  margin: 0;
+  padding: 0 1px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.game-line {
+  /* 12.5px × 1.5 × 2 行 = 37.5px：留够两行，否则长台词换行时面板会长高 ——
+     高度一变，measureBubble 的命中框就过期，新长出来的按钮会点不动。 */
+  min-height: 38px;
+  margin: 0;
+  padding: 0 1px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  /* 她的台词是「说出来的话」，斜体 + 深蓝灰，和判定结果区分开 */
+  font-style: italic;
+  color: #3d4566;
+}
+
+/* 空的时候不显示，但不摘掉元素 —— 高度由 min-height 兜住 */
+.game-moves:empty,
+.game-line:empty {
+  color: transparent;
+}
+
+/* 三个出拳按钮：等宽三栏，emoji 在上、名字在下 */
+.game-hands {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  min-height: 62px;
+}
+
+.game-hands[hidden] {
+  display: none;
+}
+
+.game-hand {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 0 7px;
+  border-radius: 12px;
+  border: 1px solid rgba(31, 36, 48, 0.09);
+  background: #f7f9ff;
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.12s ease, background 0.15s ease,
+    border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* 悬停时抬起 2px：桌宠上的元素小，靠位移比靠变色更容易被看见 */
+.game-hand:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: rgba(77, 107, 254, 0.38);
+  box-shadow: 0 4px 12px rgba(77, 107, 254, 0.16);
+  transform: translateY(-2px);
+}
+
+.game-hand:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+.game-hand:focus-visible {
+  outline: 2px solid rgba(77, 107, 254, 0.5);
+  outline-offset: 2px;
+}
+
+.game-hand:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.game-emoji {
+  font-size: 21px;
+  line-height: 1;
+}
+
+.game-name {
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+/* 局末的两个选项：高度与出拳区一致，切换时面板不抽动 */
+.game-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 62px;
+}
+
+.game-actions[hidden] {
+  display: none;
+}
+
+.game-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: none;
+  background: var(--brand);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.game-btn:hover {
+  background: var(--brand-hover);
+}
+
+.game-btn:active {
+  transform: scale(0.985);
+}
+
+.game-btn:focus-visible {
+  outline: 2px solid rgba(77, 107, 254, 0.45);
+  outline-offset: 2px;
+}
+
+/* 「不玩了」是退路，不是主操作：描边 + 透明底，别和「再来一局」抢 */
+.game-btn--ghost {
+  background: transparent;
+  border: 1px solid rgba(31, 36, 48, 0.14);
+  color: var(--ink-2);
+}
+
+.game-btn--ghost:hover {
+  background: rgba(31, 36, 48, 0.05);
+  border-color: rgba(31, 36, 48, 0.24);
+}
+
+/* 游戏期间齿轮隐藏（点它会把牌局丢在后台，语义不对） */
+.bubble-gear[hidden] {
+  display: none;
+}
+
+/* ---- 右键菜单：牌局进行中的锁定态 ------------------------------------------ */
+
+.pet-menu-note {
+  padding: 3px 10px 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px dashed rgba(31, 36, 48, 0.14);
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+/* 同上：.pet-menu-note 没设 display，但保险起见显式写一条 */
+.pet-menu-note[hidden] {
+  display: none;
+}
+
+.pet-menu-item:disabled {
+  color: #b6bac7;
+  cursor: not-allowed;
+}
+
+.pet-menu-item:disabled:hover {
+  background: transparent;
+}
+
+/* 减少动态效果：抬起/缩放全部去掉，只保留颜色变化 */
+@media (prefers-reduced-motion: reduce) {
+  .game-hand,
+  .game-btn {
+    transition: none;
+  }
+
+  .game-hand:hover:not(:disabled),
+  .game-hand:active:not(:disabled),
+  .game-btn:active {
+    transform: none;
+  }
+}
+
+/* =============================================================================
+   [AI-GEN] Phase 3.25：待办并入对话框
+   =============================================================================
+   待办不再是 fixed 的独立面板，而是 #bubble 的第五个视图（#view-todo）。
+   这么做的好处：
+     · 只有一套定位 / 尾巴 / 淡入 / 命中检测，不会再出现两块窗口各飘各的；
+     · 聊天页和待办页共用一个标题栏，页签一拨就切换；
+     · 完成任务的台词可以直接显示在待办页顶部（#todo-say），
+       列表仍然留在原地，不会被聊天页替换掉。
+
+   气泡切到待办时整体换成深色皮肤（见 #bubble.bubble--todo），
+   所以下面的待办控件继续沿用原来的浅字 / 深底配色。
+   ============================================================================= */
+
+/* 对话框宽度：待办内容比聊天宽一点，但仍是同一只气泡 */
+#bubble.bubble--todo {
+  --bubble-w: min(342px, calc(100vw - 8px));
+}
+
+#bubble.bubble--todo .bubble-inner {
+  color: #eef1ff;
+  border-color: rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(158deg, rgba(56, 64, 92, 0.9) 0%, rgba(24, 28, 43, 0.93) 52%, rgba(17, 20, 32, 0.95) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
+  filter: drop-shadow(0 18px 42px rgba(8, 11, 24, 0.42))
+    drop-shadow(0 2px 6px rgba(8, 11, 24, 0.24));
+}
+
+/* 尾巴跟着深色皮肤走，否则会留一小块白圆 */
+#bubble.bubble--todo .bubble-inner::after {
+  background: #181c2b;
+}
+
+#bubble.bubble--todo .bubble-title {
+  color: #eef1ff;
+}
+
+#bubble.bubble--todo .bubble-dot {
+  background: #8fa4ff;
+  box-shadow: 0 0 8px rgba(143, 164, 255, 0.7);
+}
+
+#bubble.bubble--todo .bubble-tabs {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+#bubble.bubble--todo .bubble-tab {
+  color: rgba(214, 221, 247, 0.58);
+}
+
+#bubble.bubble--todo .bubble-tab:hover:not(.is-active) {
+  color: #fff;
+}
+
+#bubble.bubble--todo .bubble-tab.is-active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  box-shadow: none;
+}
+
+/* 待办页顶部的一句旁白：属于同一个对话框，不是另开的 toast */
+.todo-say {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(126, 150, 255, 0.3);
+  background: rgba(126, 150, 255, 0.15);
+  color: #f1f3ff;
+  font-size: 12px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.todo-say::before {
+  content: '大肥鱼：';
+  color: #b9c7ff;
+  font-weight: 600;
+}
+
+.todo-say[hidden] {
+  display: none;
+}
+
+.todo-say.is-new {
+  animation: todo-say-in 0.24s cubic-bezier(0.32, 0.72, 0.32, 1);
+}
+
+@keyframes todo-say-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 待办内容本身不再有外框：外框就是 #bubble */
+#view-todo {
+  min-height: 0;
+}
+
+#view-todo .todo-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  /* 封顶后让 .todo-lists 内部滚动，气泡不会被长列表撑出屏幕 */
+  max-height: min(42vh, 360px);
+  padding: 0;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #eef1ff;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.todo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.todo-head-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.todo-head-hint {
+  color: rgba(196, 205, 236, 0.42);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.todo-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(228, 233, 255, 0.72);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-close {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(238, 241, 255, 0.62);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.todo-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.todo-close:focus-visible,
+.todo-add:focus-visible,
+.todo-check:focus-visible,
+.todo-text:focus-visible,
+.todo-del:focus-visible {
+  outline: 2px solid rgba(126, 150, 255, 0.75);
+  outline-offset: 1px;
+}
+
+.todo-form {
+  display: flex;
+  gap: 7px;
+  padding: 11px 1px 10px;
+}
+
+.todo-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(9, 12, 22, 0.45);
+  color: #f3f5ff;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.4;
+  /* 桌宠全局 ban 了选择，这里必须放行，否则连自己刚打的字都选不中 */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.todo-input::placeholder {
+  color: rgba(214, 221, 247, 0.4);
+}
+
+.todo-input:focus {
+  outline: none;
+  border-color: rgba(126, 150, 255, 0.72);
+  box-shadow: 0 0 0 3px rgba(92, 118, 255, 0.16);
+  background: rgba(9, 12, 22, 0.62);
+}
+
+.todo-add {
+  flex: 0 0 auto;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #6f8bff, #4d6bfe);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(45, 72, 210, 0.35);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.todo-add:hover {
+  filter: brightness(1.06);
+}
+
+.todo-add:active {
+  transform: translateY(1px);
+}
+
+.todo-lists {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1px 2px 2px;
+}
+
+/* 深色面板里的滚动条要细，否则默认白条非常扎眼 */
+.todo-lists::-webkit-scrollbar {
+  width: 6px;
+}
+
+.todo-lists::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.todo-lists::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.todo-group + .todo-group {
+  margin-top: 12px;
+}
+
+.todo-group-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(206, 214, 243, 0.58);
+}
+
+.todo-group-title--done {
+  color: rgba(186, 196, 230, 0.45);
+}
+
+.todo-group-num {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 9.5px;
+  letter-spacing: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.todo-item + .todo-item {
+  margin-top: 5px;
+}
+
+.todo-item:hover {
+  background: rgba(255, 255, 255, 0.085);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.todo-check {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  padding: 0;
+  border: 1.5px solid rgba(224, 230, 255, 0.38);
+  border-radius: 6px;
+  background: transparent;
+  color: #101528;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.todo-check:hover {
+  border-color: rgba(151, 170, 255, 0.8);
+  background: rgba(126, 150, 255, 0.16);
+}
+
+.todo-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #eef1ff;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: left;
+  word-break: break-word;
+  white-space: pre-wrap;
+  cursor: pointer;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.todo-text:hover {
+  color: #fff;
+}
+
+.todo-del {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(214, 221, 247, 0.34);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.todo-del:hover {
+  background: rgba(255, 110, 120, 0.16);
+  color: #ff9aa2;
+}
+
+/* 已完成：删除线 + 降低透明度（需求指定），复选框变实心蓝 */
+.todo-item--done {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.todo-item--done .todo-check {
+  border-color: rgba(126, 150, 255, 0.9);
+  background: #6d8cff;
+}
+
+.todo-item--done .todo-text {
+  color: rgba(226, 231, 250, 0.82);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  /* 需求：已完成要降低透明度（不要只靠颜色变灰） */
+  opacity: 0.62;
+}
+
+.todo-item--done .todo-del {
+  opacity: 0.7;
+}
+
+.todo-empty {
+  margin: 2px 0 4px;
+  padding: 9px 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(206, 214, 243, 0.48);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.todo-empty[hidden] {
+  display: none;
+}
+
+.todo-foot {
+  margin: 6px 2px 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(196, 205, 236, 0.38);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .todo-say.is-new {
+    animation: none;
+  }
+
+  .todo-add:active {
+    transform: none;
   }
 }

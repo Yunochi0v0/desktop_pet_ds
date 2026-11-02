@@ -445,6 +445,493 @@ DeepSeek 官方 API **没有** OpenAI 那种 `reasoning_effort` 档位参数，
 - 右键不弹系统菜单、不误触拖拽、不写入记忆/好感度；
 - 左键聊天、输入法、穿透、吸附、托盘均无回归。
 
+## Phase 3.15 · 拖拽惯性 + 撞墙 Q 弹
+
+**目标**：拖拽松手时如果手还在动，宠儿顺着方向滑出去，撞到屏幕边缘弹一下并「压扁回弹」，手感像有重量。
+
+### 任务
+- [x] F1 速度采样：拖拽中记录最后 6 个 `{x, y, t}`，松手用最后两帧算 px/ms。
+- [x] F2 三层兜底：`dt < 4ms` 并帧、最后采样 > 120ms 判 0、矢量限速 3.0 px/ms。
+- [x] F3 `requestAnimationFrame` 滑行：`0.915^(dt/16.667)` 摩擦衰减，60/120Hz 观感一致。
+- [x] F4 撞墙：位置夹紧 + 法向速度 `-0.55`，低于 0.04 归零。
+- [x] F5 Q 弹：`.pet-core` 上 460ms `impact-squash-x`（横向 `scale(0.88, 1.12)`）/
+      `impact-squash-y`（纵向 `scale(1.1, 0.9)`），带过冲回弹，80ms 冷却。
+- [x] F6 与原吸附互斥：先甩，甩不动才贴边；自然停下后再走一次吸附。
+- [x] F7 可打断：滑行中按下宠物 / 窗口失焦 / 中断立即停住。
+- [x] F8 `prefers-reduced-motion: reduce` 时不甩、不挤压。
+
+### How the student will check it（你本人怎么亲手确认）
+1. 快速把桌宠往右一甩再松手 → 她继续向右滑，速度慢慢降下来，最后停住。
+2. 甩向屏幕边缘 → 贴住边缘的一瞬间「压扁一下」再弹回来（左右变瘦、上下变扁）。
+3. 慢慢拖到某个位置停一秒再松手 → 不滑，原地留下（原本的贴边吸附仍然生效）。
+4. 甩出去以后伸手（鼠标）去抓她 → 一按就停，能直接接着拖。
+5. 系统开启「减少动态效果」后重复 1、2 → 不滑、不压扁。
+
+### Exit condition
+- F1–F8 由你本人确认；
+- 甩尾方向、距离、撞墙位置都跟手，没有「飞过头/瞬移/贴边抖动」；
+- 单击气泡、拖拽跟手、穿透、吸附、托盘、聊天均无回归。
+
+## Phase 3.16 · 四张基础表情 + 状态机
+
+**目标**：给「标准」档（high）加一套独立的表情状态机。四张表情分别是
+铁盆常态（pot）、死鱼眼（idle）、含泪（sad）、抱枕睡觉（sleep），
+优先级为「空中甩飞 → 睡眠 → 好感度分档」。
+
+**范围（重要）**：只有标准档改。
+- 轻量（low）→ 仍是 `pet-low.png`，不参与睡眠 / 好感度 / 甩飞的表情切换；
+- 极致（max）→ 仍是 `pet-max.png`，同上；
+- 标准（high）→ 四张表情随状态切换。
+
+### 任务
+- [x] G1 抠图：idle / sad / sleep 三张白底 JPG 去背（保留抱枕、Z 字气泡、水珠、聊天泡），
+      清掉右下角水印；pot 由 `pet-high.png` 统一成 384×384、内容长边 360。
+- [x] G2 `PET_FACES` 映射表 + `state.face`；`currentSpriteSrc()` 决定图源：
+      标准档用表情，其余档用 `DEPTHS[].src`（轻量 / 极致保持原样）。
+- [x] G3 `setPetImage()`：预解码 + 原子替换 + 自增序号丢弃过期解码，避免闪白 / 连点错图。
+- [x] G4 `updateBaseState()`：`airborne` → pot；`sleeping` → sleep；
+      否则 favor `<20` → sad、`<40` → idle、其余 → pot。
+- [x] G5 睡眠：标准档 60 秒无点击 / 拖拽 / 发消息自动入睡；拖拽中、等回答、空中不睡。
+      轻量 / 极致不进入睡眠（保持改动前的行为）。
+- [x] G6 唤醒：点一下立刻醒并弹气泡说「啧，干嘛吵醒我？」（5 秒冷却不刷屏），
+      发消息 / 拖拽也会醒但不出台词。
+- [x] G7 甩飞：`startFling()` 成功即强制 pot（防御姿态），`endFling()` 落地后按好感恢复。
+- [x] G8 好感度结算与每轮对话结束后各重算一次表情。
+- [x] G9 CSS：换表情 180ms 淡入（只动 opacity）、睡眠 4.8s 慢呼吸，
+      `prefers-reduced-motion` 下两者都关掉；`sleeping` 类只在标准档挂，
+      所以轻量 / 极致不会触发这些动画。
+- [x] G10 测试：单测 451 通过 / 0 失败；真机探针四张图均 384×384、加载完成、
+      同一渲染尺寸、睡眠动画生效、戳醒出台词；轻量仍是 pet-low、极致仍是 pet-max、
+      切回标准立刻用表情图，`problems: []`。
+
+### How the student will check it（你本人怎么亲手确认）
+0. 先把「思考深度」切到**标准**（默认档是轻量，轻量不启用表情包）。
+1. 开屏是头顶铁盆的常态图；把好感度降到 30 附近（连发几条普通消息会 -1）→ 变成死鱼眼。
+2. 好感度掉到 20 以下 → 变成含泪 + 汗滴。
+3. 放着不动一分钟 → 抱着枕头睡着、Z 字气泡出现，整体呼吸变慢。
+4. 点她一下 → 立刻醒，气泡弹开并说「啧，干嘛吵醒我？」；连点不会刷出好几条。
+5. 用力把她甩出去 → 空中变成铁盆（防御姿态），落地后回到本该有的表情。
+6. 切「轻量」→ 回到半身 Q 版 `pet-low`；切「极致」→ 回到九头身 `pet-max`；
+   这两档不会入睡、也不会弹「干嘛吵醒我」；切回标准立刻恢复当前表情。
+
+### Exit condition
+- G1–G10 由你本人确认；
+- 四张图切换没有闪白、没有忽大忽小；
+- 轻量 / 极致的立绘与行为与改动前完全一致；
+- 气泡、穿透、拖拽、惯性、吸附、托盘、聊天、查余额均无回归。
+
+## Phase 3.17 · 极致档的九头身表情包
+
+**目标**：给「极致」档（max）也配一套四表情，风格与 `pet-max.png` 一致。
+三张新差分按标准档的动作幅度生成：抱枕睡姿、死鱼眼 + 省略号、含泪 + 汗滴。
+
+**范围（重要）**：本阶段**取代** Phase 3.16 里「极致保持原样」那一条。
+- 轻量（low）→ 仍然完全不参与表情，`pet-low.png` 不变；
+- 标准（high）→ Phase 3.16 的 384 Q 版四表情不变；
+- 极致（max）→ 新增 `pet-max.png` / `pet-max-idle.png` / `pet-max-sad.png` /
+  `pet-max-sleep.png` 四张九头身表情，规则与标准档完全一致（60 秒睡、好感度分档、甩飞铁盆）。
+
+### 任务
+- [x] H1 生成三张差分（1024×1536）：抱枕睡姿、死鱼眼 + 省略号气泡、含泪 + 汗滴，
+      角色特征（蓝发 / 女仆装 / 鲸鱼尾 / 白色贴纸描边）与 `pet-max.png` 对齐。
+- [x] H2 后处理脚本 `.deepworks/tmp/maxpack.py`：边缘 flood fill 抠白底
+      （`NEUTRAL_MIN=234`、`SAT_MAX=14`、0.8px 羽化）、右下角水印整块清空、
+      孤立小碎块（残留水印笔画）剔除。
+- [x] H3 尺度对齐：以 `pet-max.png` 的脸宽 76px 为基准。
+      站姿（哭泣 / 无语）按内容高度 1108 归一；坐姿（抱枕）按脸宽对齐后取 h88
+      （比站姿大半档，坐姿填满下半屏又不显得突变）。
+- [x] H4 代码：`PET_MAX_FACES` + `FACE_PACKS` 表；`spriteSrcForFace(face, depth)`
+      按档位取包；`FACE_PACK_DEPTH` 改为 `['high', 'max']`；`usesFacePack()` 改为查表。
+- [x] H5 测试：单测 **465 通过 / 0 失败**（新增 max 档四项表情映射、极致 60 秒入睡、
+      极致四张文件存在）；真机探针 `e2e-faces.js` 19 项 checks 全 true
+      （新增 `maxUsesOwnPack` / `maxIdleAt30` / `maxSadAt10` / `maxSleepAt61s` /
+      `maxSpritesLoaded` / `maxSameRenderBox`），`problems: []`。
+- [x] H6 文档同步（本文件 + `DEV_LOG.md` + `buildLog.json`）。
+
+### How the student will check it（你本人怎么亲手确认）
+1. 设置里把「思考深度」切到**极致** → 立绘是九头身 `pet-max`，没有变形。
+2. 连发几条普通消息把好感度压到 30 附近 → 变成九头身死鱼眼（左上省略号气泡）。
+3. 好感度掉到 20 以下 → 变成九头身含泪 + 汗滴（双手合在胸前）。
+4. 放着不动一分钟 → 抱膝抱着枕头睡着，Z 字气泡在右上方，呼吸变慢。
+5. 点一下 → 立刻醒，气泡弹开说「啧，干嘛吵醒我？」。
+6. 切回「轻量」→ 仍是 `pet-low.png`，不睡、不出台词；切回「标准」→ 384 Q 版四表情。
+
+### Exit condition
+- H1–H6 由你本人确认；
+- 三档来回切换时角色不会忽大忽小（同一档内切表情，头部尺寸不变）；
+- 轻量档行为与 Phase 3.16 完全一致；
+- 气泡、穿透、拖拽、惯性、吸附、托盘、聊天、查余额均无回归。
+
+## Phase 3.18 · 番茄钟（专注 / 休息 + 头顶倒计时）
+
+### 目标
+给「桌宠」加一个真正能用的番茄钟：右键菜单开专注 / 休息，头顶常驻一个小胶囊倒计时，
+归零时用大号对话框喊人。核心约束是**不能为了计时打扰她**——轻量档一张图都不许换。
+
+### 设计
+- **计时放主进程**，渲染进程只订阅。理由：窗口可能被隐藏 / 被系统节流，
+  `setInterval` 在后台会漂；主进程用绝对 `endsAt` 算 remaining，每次 tick 自愈，
+  即使中途系统睡眠也不丢时间。
+- **防休眠**：专注期间 `powerSaveBlocker.start('prevent-app-suspension')`，
+  休息 / 停止 / 退出时释放。只在 **focusing** 挂，resting 不挂（休息就该让机器歇着）。
+- **表情**：`focusing → code`（敲代码差分）、`resting → sleep`（抱枕睡姿）、
+  `idle → 交还给好感度 / 睡眠状态机`。轻量档没有表情包，`setPetImage()` 判重后
+  连 `src` 都不写，所以图**完全不动**（单测与真机双重验证）。
+- **小胶囊**：`#pomo-chip`，`role="timer"`、`aria-live="off"`（每秒播报会吵死读屏）。
+  定位用 `transform`，跟着拖拽 / 甩飞 / 吸附实时重排；气泡在上方时自动让到脚下，
+  并按立绘 `scale(1.1)` 的溢出量（约 5% 画框高）再退一点，避免压住小腿。
+- **右键菜单**：`#pet-menu`，五项 = 开启专注 / 开启休息 / 停止计时 / 查余额 / 设置。
+  用 `visibility` 而不是 `display:none`，否则量不到尺寸没法定位；菜单本身要计入
+  `isPointInteractive()`，否则鼠标会穿透点不动。
+- **归零提示**：复用 `#bubble` 加 `.bubble--big`（356px 宽、15px 正文），
+  8 秒后自动收回到普通尺寸；台词固定为
+  「（伸懒腰） 时间到啦！笨蛋，快起来活动一下！」/「（合上笔记本） 休息够了吧？该回来继续干活了。」
+- **可测性**：`POMO_FOCUS_MS` / `POMO_REST_MS` 环境变量覆盖时长（clamp 1s–180min），
+  真机自检才能在 3 秒内跑完一轮。
+
+### 任务
+- [x] K1 主进程：`pomo` 状态机 + 绝对时间 + `powerSaveBlocker` + 3 个 IPC 通道
+      （`pomodoro:start|stop|state`，全部走 `isTrustedSender`）。
+- [x] K2 `preload.js`：只暴露 5 个方法，phase 白名单 `focusing|resting`，返回 unsubscribe。
+- [x] K3 渲染进程：表情接入 `updateBaseState()` 最高优先级（仅次于甩飞），
+      `checkSleepDeadline()` 在计时期间直接跳过（防止 60 秒睡眠抢表情）。
+- [x] K4 胶囊 + 菜单 + 大对话框：DOM / CSS / 定位 / 命中检测 / Escape / 点外部关闭。
+- [x] K5 素材接入：`PET_FACES.code` / `PET_MAX_FACES.code`，两张差分拷进 `assets/`。
+- [x] K6 测试：单测 **520 通过 / 0 失败**；新增 `e2e-pomodoro.js` **29 项 checks 全 true**，
+      `problems: []`；`e2e-electron.js` / `e2e-fling.js` / `e2e-faces.js` 无回归。
+
+### How the student will check it（你本人怎么亲手确认）
+1. **轻量档（默认）** → 右键 → 「开启专注」。头顶出现 `⏳ 专注中 25:00` 且在走秒，
+   **角色图片一动不动**（这是硬要求：不换图、不加动画）。
+2. 气泡打开时（左键点她）→ 胶囊自动让到脚下，不遮挡对话、不压角色。
+3. 切到**标准**档再开专注 → 变成抱笔记本敲代码的差分；切**极致**档 → 九头身敲代码差分。
+4. 等倒计时归零（或 `POMO_FOCUS_MS=3000 npm start`）→ 弹出大号对话框
+   「（伸懒腰） 时间到啦！笨蛋，快起来活动一下！」，同时自动进入休息、换成睡姿。
+5. 休息归零 → 「（合上笔记本） 休息够了吧？该回来继续干活了。」，回到日常立绘。
+6. 中途右键 → 「停止计时」→ 立刻回到日常表情，胶囊消失。
+7. 专注期间不要去碰系统睡眠（防休眠只在她专注时生效）；关掉应用不会残留 blocker。
+
+### Exit condition
+- K1–K6 由你本人确认；
+- 轻量档专注 / 休息期间 **`<img src>` 零变化**（DevTools 里盯一眼即可）；
+- 三档表情切换正确，归零台词与大号样式符合预期；
+- 拖拽 / 甩飞 / 吸附 / 气泡 / 穿透 / 托盘 / 查余额 / 设置全部无回归。
+
+## Phase 3.19 · 极致档「被击飞」专用差分（铁盆 + 慌张）
+
+### 目标
+极致（max）档立绘本来是「优雅九头身」，被甩飞时却只沿用 pot 那张平静站姿，
+和「被扔出去」的动势完全不搭。这一版给她做一张专用差分：
+**头上扣着不锈钢盆、双手扶盆沿、一脸慌张但可爱**，只在空中（`state.airborne`）出现。
+
+### 设计
+- 差分键名 `panic`，只挂在 `PET_MAX_FACES` 上（`./assets/pet-max-panic.png`）。
+- `updateBaseState()` 的 airborne 分支改为无条件 `applyFace(FACE_PANIC)`：
+  - 极致档 → 新差分；
+  - 标准档 → `PET_FACES.panic` 指向 `pet-pot.png`（Q 版 pot 本来就顶着铁盆，
+    视觉与旧行为完全一致，只是 `data-face` 记为 `panic`）；
+  - 轻量档 → `setPetImage()` 判重 + 无表情包，`<img src>` 一个字节都不改。
+  这样不用在每个档位里写分支，查表回落已经把三档都照顾到了。
+- 素材走既有管线：`deepworks_image_edit`（以 `pet-max.png` 为参考，1024×1536 出图）
+  → `maxpack.py auto`（白底 flood-fill 抠图 + 去水印 + 内容高度对齐 1108px）
+  → `src/assets/pet-max-panic.png`（521×1108，RGBA）。
+- 关键约束（写在提示词里，逐条核对）：头身比与参考一致（约 7.5 头身）、
+  不许出现白描边贴纸效果、表情是「卡通式慌张」而不是真惊恐 / 哭 / 生气。
+
+### 任务
+- [x] L1 生成两版候选（A 挺直双手扶盆 / B 后仰单脚离地），选 B：动势更像被扔出去。
+- [x] L2 抠图与尺度对齐：`521×1108`，与 `pet-max-code.png`（529×1120 → 内容 1108）同族。
+- [x] L3 接入：`PET_MAX_FACES.panic` + `FACE_PANIC` + airborne 分支。
+- [x] L4 测试：单测 **538 通过 / 0 失败**；新增 `e2e-panic.js` **17/17**，`problems: []`。
+- [x] L5 回归：标准档仍显示 Q 版 pot（`e2e-panic` 里截图核对），轻量档图片零变化。
+
+### How the student will check it（你本人怎么亲手确认）
+1. 切到**极致**档（右键 → 设置 → 思考深度 → 极致）。
+2. 抓住她往任意方向甩出去（快速拖动后松手）。
+3. 离手瞬间应该变成：**头上扣着不锈钢盆、双手扶着盆沿、瞪大眼睛张嘴、脸红 + 一滴汗**。
+4. 落地后立刻回到原来的表情（好感高是常态图，好感低是死鱼眼）。
+5. 切到**标准**档再甩一次：还是原来那张 Q 版铁盆图（没有变）。
+6. 切到**轻量**档再甩一次：角色图片完全不动（只有位置和旋转在变）。
+
+### Exit condition
+- 极致档空中 = 新差分，落地 = 原表情，来回甩不残留；
+- 标准 / 轻量档行为与 Phase 3.16 完全一致；
+- 新图在 210×315 画框里不被裁切（`e2e-panic.js` 断言 `boxH <= 315`）。
+
+## Phase 3.20 · 设置面板重排（卡片化 + 层级）
+
+### 目标
+原设置页把「API Key / 思考深度 / 记忆条数 / 清除 / 保存」平铺在一个 flex 列里，
+所有间距都是同一个 10px，眼睛没有落点；文案也在重复（下拉框已经写着「轻量」，
+下面再补一句「当前：轻量 · chat · 192×192」）。这一版**只改 UI/UX，功能逻辑一行不动**：
+两张卡片分组 + 每行一句极简文案 + 危险按钮归位 + 主按钮收口到右下角。
+
+### 设计
+- **分组**：`section.settings-card` × 2（`API 与模型` / `记忆管理`）。
+  间距分三级 —— 卡片之间 10px、卡片内元素 12px、字段内 6px；
+  层级越大间距越大，眼睛自然分段（旧版全是一个值，所以看起来「糊成一片」）。
+- **卡片底色**：`color-mix(in srgb, var(--ink) 4%, transparent)`，
+  外加 `@supports` 兜底 `#f7f8fc`。底色跟着 `--ink` 走 ——
+  浅色主题是极淡冷灰，将来真做深色主题（改 `--ink` 为浅色）会自动变成白雾，
+  不需要再补一套深色卡片样式。
+- **控件皮肤统一**：输入框 / 下拉框都是 36px 高、10px 圆角、白底 + `var(--line)` 细边。
+  旧版输入框是浅灰无边框、下拉框是白底有边框，并排放着不像一家人。
+- **文案**（三处都在 `renderer.js`）：
+  - Key 提示 → `已保存：sk-12…6f1b（输入新 Key 可覆盖）`，一行放得下；
+  - 深度状态 → `当前模型支持推理过程展示` / `直答模式，不展示推理过程`，
+    删掉「当前：档位 · 模型 · 画框尺寸」这段和下拉框重复的信息；
+  - 记忆 → `记忆 N 条 · 最近 5 轮会带给模型`，合并到卡片标题右侧；
+  - 成功提示（`data-kind="ok"`）在设置页里也走灰字：绿色会把辅助信息抬成第二重点。
+- **按钮**：
+  - 左下角孤立的「清除」删掉，改成 Key 提示行右侧的文字链 `#key-clear`
+    （清 key 的功能保留，但视觉权重降到最低 —— 它是有破坏性的低频操作）；
+  - 「清空聊天记忆」移进记忆卡片：红色描边 + 5% 浅红底，不用实心红，
+    免得抢走「保存设置」的主按钮地位；
+  - 「保存设置」独占右下角，也是整个面板唯一的实心按钮。
+
+### 兼容
+- 所有 id 保持不变（`key-input` / `key-status` / `depth-select` / `depth-status` /
+  `memory-status` / `memory-clear` / `key-clear` / `key-save`），`renderer.js` 的
+  绑定、e2e 的 `!!q(id)` 检查都不用改。
+- `#memory-status` 仍然只写「记忆 N 条」这四个字，后面的说明是静态文本，
+  单测里那些 `textContent === '记忆 N 条'` 的断言原样通过。
+- 单测只改了两条断言的期望（`状态行显示当前档位` / `状态行给出实际画框`）：
+  它们断言的正是本次删掉的重复文案。
+
+### 任务
+- [x] H1 HTML：`#view-settings` 拆成两张 `section.settings-card` + 底部 `settings-actions`。
+- [x] H2 CSS：新增「Phase 3.20：设置面板重排」区块；删掉失效的 `.bubble-label`
+      与 `.bubble-ghost`；控件统一 36px。
+- [x] H3 文案：`defaultDepthText()` / `showApplied()` / `refreshKeyStatus()` 精简；
+      `maskKey()` 短 key 返回 `sk-…`（避免「已保存：已保存」）。
+- [x] H4 测试：单测 **538 通过 / 0 失败**；`e2e-electron` / `e2e-pomodoro`（29/29）/
+      `e2e-faces` / `e2e-fling` / `e2e-panic`（17/17）全部 `problems: []`。
+- [x] H5 真机截图核对：`.deepworks/tmp/work/settings-no-key.png`、
+      `settings-with-key.png`（含「记忆 12 条」最长 meta）。
+
+### How the student will check it（你本人怎么亲手确认）
+1. 右键角色 → 设置：应看到两张浅灰卡片，标题分别是「API 与模型」「记忆管理」。
+2. Key 那行提示是小号灰字，保存过 key 时显示 `已保存：sk-…`；右侧只有一条「清除」文字链。
+3. 思考深度下方只有一句 `当前模型支持推理过程展示`（切到轻量变成「直答模式」），
+   不再出现「当前：xxx · 192×192」。
+4. 记忆卡片标题右侧是 `记忆 N 条 · 最近 5 轮会带给模型`，下面一个红描边的「清空聊天记忆」。
+5. 面板右下角只有一个实心按钮「保存设置」，点了仍然保存 key 并切回聊天。
+6. 回归：切档换立绘、聊一句、查余额、番茄钟、拖拽 / 吸附都正常。
+
+### Exit condition
+- 设置页只有两张卡片 + 一个右下角主按钮，没有游离的控件；
+- 所有旧功能（保存 / 清除 key / 切档 / 清记忆）行为不变；
+- 单测与 5 个 e2e 全绿。
+
+## Phase 3.21 · 剪贴板吐槽 + 语音播报（傲娇小女孩开口）
+
+### 目标
+前二十个 Phase 里她只会「看着你敲字」。这一版给她两件「自己会动」的本事：
+1. **剪贴板吐槽**：你复制了一段报错、或者一整屏代码，她过几秒自己冒出来嫌弃一句
+   （「又写 Bug 了？啧，我就知道。」）。不用你点、不用你发消息。
+2. **语音播报**：她的回答会用系统 TTS 念出来，语速略快、音调偏高，中文女声，
+   像是「小个子在嫌弃你」。设置页给一个开关，默认关（不打扰）。
+
+### 设计
+- **检测放在主进程**：渲染进程拿不到剪贴板（CSP + 权限），所以
+  `main.js` 每 `CLIP_POLL_MS = 3000` 轮询一次 `clipboard.readText()`。
+  - `classifyClipboard()` 只做两种粗判：`CLIP_ERROR_RE`（error / exception /
+    traceback / cannot read / failed to…）命中 → `error`；
+    超长（`> CLIP_CODE_MIN_CHARS = 500`）且 `CLIP_CODE_RE`（function / const /
+    import / `=>` / `</tag>`…）命中 → `code`。
+  - 宁可漏判也不误判：复制一段小说不该被当成代码吐槽，所以代码判据要求「长 + 有结构」。
+  - `> CLIP_SKIP_TOO_LONG = 20000` 直接忽略（复制了整个文件/日志时别浪费内存）。
+  - 去重：`clipFingerprint = kind|length|前 120 字`，最近 `CLIP_SEEN_LIMIT = 30` 条存 `clipWatch.seen`。
+  - 自己写的剪贴板不吐槽：`pet:copy-text` 写完后回读并记进 `clipWatch.selfWritten`。
+- **Electron 45 的异步剪贴板**：`clipboard.readText()` 在 45 起返回 Promise
+  （旧版是同步字符串）。新增 `readClipboardText()` / `writeClipboardText()` 两个兼容层，
+  `clipPollOnce()` 改 async 并用 `clipWatch.busy` 防止 3s 定时器叠跑；
+  启动时先 `seeded = false` 做一次异步播种，播种完成前的轮询直接跳过。
+- **被动气泡不抢焦点**：`showRoast()` 走 `openBubblePassive()` —— 弹气泡但不聚焦输入框、
+  不改 `state.panel`；`ROAST_VISIBLE_MS = 8000` 后自己收起。
+  你正在打字时她冒一句就走，不会打断输入法候选词。
+- **台词库**：`ROAST_LINES.error` / `.code` 各 5~6 句，只「嫌弃」不「讲课」——
+  真正的问题你比它清楚，她在这儿解释技术只会显得聒噪。
+- **TTS**：`speakText()` 先 `stripMarkdownForSpeech()`（去 `**`/`` ` `` / 链接 / 列表符号 /
+  代码块），再 `clipForSpeech(plain, SPEECH_MAX_CHARS = 200)` 只念开头，
+  否则一条长回答能念半分钟。`SPEECH_RATE = 1.12` / `SPEECH_PITCH = 1.28`。
+  中文声音优先 `zh-CN`（macOS 上是「婷婷」），找不到就退回默认声音。
+  没有引擎（Linux 无 speech-dispatcher）时 `speakText()` 返回 `false`，
+  设置页状态行给一句警告，不抛错。
+- **设置页第三张卡片「声音与提醒」**：`#speech-select`（开启/关闭）+
+  `#clip-select`（开启/关闭）。`pet_speech` 默认 `off`（不打扰），
+  `pet_clip_roast` 默认 `on`（但必须有地方关掉 —— 剪贴板是隐私边界）。
+- **设置页高度封顶修正**：`fitSettingsHeight()` 原来只按 `state.pos.y` 封顶，
+  没扣气泡外壳（标题栏 + padding），真机上气泡总高 614 > 可用 581，翻到角色下方。
+  改成 `chrome = bubbleH - viewH`（量不到时兜底 72，覆盖隐藏/测试环境），
+  `available = pos.y - BUBBLE_GAP - 2 - chrome`；真机 `maxHeight = 517px`，
+  气泡 `y=2 h=579`，角色 `y=595`，重叠面积 0。
+- **设置页滚动区拆分**：三张卡片在 867px 高的窗口里放不下一屏，
+  把卡片包进 `.settings-scroll`（`flex:1;min-height:0;overflow-y:auto`），
+  把 `.settings-actions` 移出滚动区固定在底部 —— 否则「保存设置」会跟着卡片一起滚走。
+  `#view-settings` 自身 `overflow:hidden`，滚动条只出现在卡片区。
+
+### 任务
+- [x] K1 `main.js`：常量、`classifyClipboard` / `clipFingerprint` /
+      `readClipboardText` / `writeClipboardText` / async `clipPollOnce` /
+      `clipWatchStart` / `clipWatchStop`、IPC `clipboard:set-watch` + `clipboard:hint`、
+      `will-quit` 清理。
+- [x] K2 `preload.js`：`setClipboardWatch` / `onClipboardHint`。
+- [x] K3 `renderer.js`：`ROAST_LINES`、`showRoast` / `onClipboardHint` / `bindClipboardEvents`、
+      `speakText` / `stripMarkdownForSpeech` / `clipForSpeech`、两个开关键读写、
+      `onSend` 回答落地后朗读、init 7.8 步订阅。
+- [x] K4 `index.html` / `style.css`：第三张卡片「声音与提醒」、`.settings-scroll`
+      包裹层、`.settings-row`、`.msg--roast`、卡片紧凑化（gap 11 / padding
+      `11px 12px 10px` / 控件 31px / actions `5px 0 2px`）。
+- [x] K5 测试：单测 **582 通过 / 0 失败**（新增「场景 K：Phase 3.21」整段）；
+      真机 `e2e-roast.js` **37/37**，`problems: []`；5 个既有 e2e 全部无回归。
+
+### How the student will check it（你本人怎么亲手确认）
+1. 随便复制一段报错（比如 `TypeError: cannot read properties of undefined`），
+   别动鼠标，**4 秒内**她应该自己冒出一句吐槽，而且**输入框不会跳出来抢焦点**。
+2. 再复制一段 600 字以上的代码，应该换成「这么长一段，你是想让我逐行批改作业吗？」这类台词。
+3. 同一段内容复制两次：只吐槽一次。
+4. 右键 → 设置 → 声音与提醒 → 剪贴板吐槽「关闭」，再复制报错：她不理你了。
+5. 语音播报改「开启」，回到聊天问一句，应该听到中文女声念回答（只念开头 200 字），
+   语速略快、音调偏高；输入框里打字时不会被她打断。
+6. 设置页三张卡片一屏放得下，「保存设置」固定在右下角不随滚动移动，角色不被气泡盖住。
+
+### Exit condition
+- 复制报错 / 长代码能触发一次且仅一次吐槽，气泡 8 秒自动收起，不抢焦点；
+- 语音开关持久化，重启后仍生效；无引擎机器不崩、有警告；
+- 设置页不遮挡角色，三卡片 + 底部按钮在 1512×867 下无需滚动即可看全；
+- 单测 582 全绿，`e2e-roast` 37/37，5 个既有 e2e 无回归。
+
+## Phase 3.22 · 猜拳小游戏（跟大肥鱼猜拳）
+
+### 目标
+给她一个**不需要联网、不花钱、随时能玩**的互动：右键菜单里多一项「✊ 跟大肥鱼猜拳」，
+进了牌桌点一张手牌就出拳；她会按需求原文说一句（赢了撇嘴不认账、输了嘲讽、平局死鱼眼），
+表情跟着变，好感度跟着动（胜 +3 / 负 −1 / 平 0）。
+
+### 设计
+- **纯本地，不碰网络**：判定就是 `GAME_BEATS` 一张表，随机用 `Math.random()`。
+  调用链 `playRound()` 里**没有** `fetch`、不写 `chat_history`、不落记忆 ——
+  猜拳是玩，不是对话，不能污染上下文与每日好感结算。
+- **视图是气泡的第四个面板**（`#view-game`），不是新窗口：
+  `setPanel('game')` 隐藏齿轮、标题换成「猜拳 · 不许赖账」，
+  右上角留自己的 `#game-close`（✕）。复用气泡的毛玻璃 / 圆角 / 尾巴，
+  右键菜单、鼠标穿透、拖拽全部不用另写。
+- **高度必须恒定**（本 Phase 最大的坑）：气泡的命中框来自 `measureBubble()`，
+  只在 `setPanel` / `relayoutBubble` 时更新。若「出拳前」和「出结果后」高度不同，
+  新长出来的按钮会落在过期命中框外 —— 表现是「按钮看得见、点不动」。
+  因此 `.game-hands` 与 `.game-actions` 同 `min-height: 62px`，
+  `.game-line` 留两行（38px），整块面板在任何状态等高；`e2e` 直接断言两态 `bubbleRect.h` 相等。
+- **`[hidden]` 要自己写**：两个区都是 `display:flex`，作者样式会压过 UA 的
+  `[hidden]`；漏掉就是「手牌和［再来一局］同时出现」。
+- **牌局期间锁菜单**：`lockMenuForGame()` 把「专注 / 休息 / 查余额 / 设置 / 猜拳」
+  全置灰并显示顶部提示「牌局进行中，先打完这局」；
+  只有「🛑 停止计时」保持可点 —— 那是安全阀，不能因为玩游戏停不掉番茄钟。
+  `handlePetMenuAction()` 里还有第二道闸（置灰项被代码触发也无效）。
+- **不和番茄钟/聊天抢面板**：`updateBaseState()` 里游戏分支排在番茄钟之前
+  （牌桌上表情永远服务于猜拳），`showBigDialog()` 在牌局中改为
+  「写进聊天记录 + 返回 false」，`checkSleepDeadline()` 在牌局中直接 `return false`
+  （玩到一半她不该睡着）。
+- **好感度联动沿用既有边界**：`bumpGameFavor()` 走和聊天同一条 `writeFavor()`，
+  夹在 `0..100`；胜 +3 是「她被你赢了会不服气」（表情 `sad`），
+  负 −1 是「她赢了你更得意」（`pot`），平 0（`idle`）。
+- **退出三条路一致**：ESC / ✕ / 【不玩了】走同一个 `endGame(true)`；
+  点球关气泡走 `closeBubble()` → `resetGameView()`，表情立刻交还好感度状态机
+  （不能停在「看不服气」脸）。
+
+### 任务
+- [x] L1 `index.html`：`#view-game`（比分 + ✕ + 判定行 + 台词行 + 三张手牌 + 两个收尾按钮）、
+      菜单项 `data-action="game"`、`#pet-menu-note`。
+- [x] L2 `style.css`：`.game*` 一整套（等高三件套、hover 抬 2px、focus-visible、
+      两处 `[hidden]` 兜底、`.bubble-gear[hidden]`、`.pet-menu-item:disabled`、
+      `prefers-reduced-motion`）。
+- [x] L3 `renderer.js`：`GAME_HANDS` / `GAME_BEATS` / `GAME_FAVOR` / `GAME_LINES` /
+      `GAME_FACE`、`judgeGame` / `playRound` / `enterGame` / `nextGameRound` /
+      `endGame` / `resetGameView` / `lockMenuForGame` / `bindGameEvents`、
+      `state.game`，以及 10 处接入点（`updateBaseState` / `checkSleepDeadline` /
+      `closeBubble` / `focusPanel` / `setPanel` / `handleEscape` / `openPetMenu` /
+      `handlePetMenuAction` / `showBigDialog` / `bindPhase3Events`）。
+- [x] L4 测试：单测 **681 通过 / 0 失败**（新增「场景 L」整段）；
+      真机 `e2e-game.js` **143/143**，`problems: []`；5 个既有 e2e 无回归
+      （`e2e-pomodoro` 的菜单项数从 5 改 6）。
+
+### How the student will check it（你本人怎么亲手确认）
+1. 右键桌宠 → 点「✊ 跟大肥鱼猜拳」：气泡变成牌桌，三张手牌（✊石头 / ✌️剪刀 / ✋布）。
+2. 点任意一张：立刻出结果 —— 「你出了[石头]，本小姐出了[剪刀]」+ 她那句台词，
+   表情换（输了不服气 / 赢了得意 / 平局死鱼眼），左上角比分累加。
+3. 故意输一局再看好感度（右键聊天问她 / 设置页或用 devtools 看 `localStorage.favor`）：
+   赢 +3、输 −1、平不变，且不会超过 100 / 低于 0。
+4. 牌局中右键：菜单顶上写着「牌局进行中，先打完这局」，除了「停止计时」全是灰的。
+5. 开个番茄钟再进牌桌：胶囊还在跳；到点提示只进聊天记录，不会把牌桌顶掉。
+6. 按 ESC / 点 ✕ / 点「不玩了」：回到聊天页，表情恢复正常；点一下桌宠也能直接退出。
+
+### Exit condition
+- 三条判定路径（胜 / 负 / 平）触发正确的台词、表情、比分与好感增量；
+- 面板在两态之间不抽动、手牌与收尾按钮互斥可见、按钮真的点得动；
+- 牌局中菜单只剩「停止计时」，且不写聊天记录、不发网络请求；
+- ESC / ✕ / 关气泡都能干净退出，表情不残留；
+- 单测 681 全绿，`e2e-game` 143/143，既有 6 个 e2e 无回归。
+  （Phase 3.23 改表情映射后这两项数字已刷新为 694 / 动态条数，见下节。）
+
+## Phase 3.23 · 欢呼差分接入（专注结束 + 猜拳认输）
+
+### 目标
+新画的一张「双手举起」差分（标准 / 极致两档），接进两个她本来就会出现的时刻：
+**番茄钟专注归零**、**猜拳玩家输**。亮 3 秒自己收回，不要求用户点任何东西。
+
+### 设计
+- **素材**：`assets/pet-cheer.png`（384×384，标准档 Q 版，白描边原样保留）、
+  `assets/pet-max-cheer.png`（599×1120，极致档九头身）。
+  两张都由 1024 白底生成图 → 去水印 → 抠图而来；极致档走 isnet-anime 蒙版
+  （发丝 / 裙摆的半透明过渡留在 alpha 里），最后按高度 1120 对齐现有 max 素材，
+  宽度随比例（599）不强行塞进 384 画布 —— 现有 max 素材也是 412~449 宽。
+- **水印怎么去的**：模型在右下角自己画了「DeepWorks AI」白字 + 灰阴影。
+  实测该矩形内**没有任何彩色像素**，所以整块填背景色
+  （标准档 `(250,250,250)` / 极致档 `(252,252,252)`）比按亮度阈值抠字干净得多：
+  第一版阈值过宽（`0.85h / 0.60w`、`lo>=150`、填纯白 255），
+  把围裙和丝袜一起涂白了，还在图上留了个白方块。
+- **窗口而不是状态**：`state.cheerUntil` 存**时间戳**，`updateBaseState()` 用
+  `nowMs() < cheerUntil` 判断。不引入 `isCheering` 这类布尔量 ——
+  后台窗口的 `setTimeout` 会被节流，一旦漏掉复位就是「永久举手」。
+- **3 秒必须自己回落**：欢呼是「一次性反应」，`POMO_CHEER_MS = 3000` 到点走
+  `updateBaseState()` 重算，于是专注结束 3 秒后她自然落到休息睡姿、站桩时落回 `pot`。
+  沿用 8 秒的大对话框长度会让表情挂太久，看起来像卡住了。
+- **优先级插在游戏之后、番茄钟之前**（`airborne > game > cheer > pomodoro > sleep/favor`）：
+  牌桌上表情永远服务于猜拳，不能被「为番茄钟欢呼」抢脸；
+  但不在牌局里时，欢呼要压过 `code` / `sleep`。
+- **新开专注立刻清窗口**：`applyPomodoroSnapshot()` 见到 phase 变 `FOCUS` 就 `clearCheer()`，
+  否则刚点「专注」她会先举 3 秒手再换 `code`。
+- **手动停止不庆祝**：`stopPomodoro()` 拿到快照后 `clearCheer()` ——
+  半路放弃不算完成，抬手欢呼很怪。
+- **猜拳映射**：`GAME_FACE.lose` 从 `pot` 改成 `cheer`（玩家输 = 她得意），
+  `win` 仍是撇嘴 `sad`、`draw` 仍是死鱼眼 `idle`。
+
+### 任务
+- [x] M1 素材：`src/assets/pet-cheer.png`、`src/assets/pet-max-cheer.png`
+      （去水印脚本与抠图脚本留在 `.deepworks/tmp/`，成品另存 `outputs/imagegen/`）。
+- [x] M2 `renderer.js`：`POMO_CHEER_MS`、`PET_FACES.cheer`、`PET_MAX_FACES.cheer`、
+      `FACE_CHEER`、`GAME_FACE.lose`、`state.cheerUntil` / `state.cheerTimer`、
+      `showCheer()` / `clearCheer()`、`updateBaseState()` 新第三层、
+      `onPomodoroDone()`、`applyPomodoroSnapshot()`、`stopPomodoro()`。
+- [x] M3 测试：单测 **694 通过 / 0 失败**；真机 `e2e-pomodoro` **35/35**；
+      `e2e-game` 全绿（条数随对局循环动态）；5 个既有 e2e 均 exit 0。
+
+### How the student will check it（你本人怎么亲手确认）
+1. 右键 →「🍅 专注」把时长改短（或直接等 25 分钟）→ 归零瞬间她双手举起，
+   气泡是「（伸懒腰） 时间到啦！笨蛋，快起来活动一下！」，头顶胶囊同时转「休息中」。
+2. 什么都别点，盯 3 秒：她自己落回抱膝睡姿（休息期就该睡）。
+3. 再点一次「专注」：应当**立刻**是敲代码的姿势，不会先抬 3 秒手。
+4. 专注跑到一半点「停止计时」：直接回常态（头顶碗），不欢呼。
+5. 猜拳故意输一局：她举手欢呼 +「就这？笨蛋，你连我都赢不了。」；
+   赢一局仍是撇嘴不服气、平局仍是死鱼眼。
+
+### Exit condition
+- 专注归零 → 欢呼 3 秒 → 休息睡姿，整条时间线无跳帧、无需交互；
+- 牌局内欢呼不抢脸（`state.game.face` 始终优先）；
+- 手动停止、紧接着新开专注，都不残留欢呼姿态；
+- 两档素材齐全、解码正常（599×1120 的宽高比在 210×315 画框内不变形）；轻量档不换图；
+- 单测 694 全绿，`e2e-pomodoro` 35/35，`e2e-game` 与既有 5 个 e2e 无回归。
+
 ## 里程碑
 
 | 时间 | 里程碑 |
@@ -464,5 +951,14 @@ DeepSeek 官方 API **没有** OpenAI 那种 `reasoning_effort` 档位参数，
 | 2026-10-22 | Phase 3.12 代码完成（记忆 + 好感度 + 吸附 + 托盘），等待人工验收 |
 | 2026-10-22 | Phase 3.13 代码完成（好感度养成化：讨好 +10 / 日常 -1 / 四档），等待人工验收 |
 | 2026-10-23 | Phase 3.14 代码完成（右键查余额：独立钱包视图 + 三种文案），等待人工验收 |
+| 2026-10-23 | Phase 3.15 代码完成（拖拽惯性 + 摩擦衰减 + 撞墙 Q 弹），等待人工验收 |
+| 2026-10-23 | Phase 3.16 代码完成（标准档四张表情 + 睡眠/唤醒/甩飞状态机；轻量/极致保持原样），等待人工验收 |
+| 2026-10-23 | Phase 3.17 代码完成（极致档九头身四表情：生成 + 抠图 + 尺度对齐 + 接入状态机），等待人工验收 |
+| 2026-10-23 | Phase 3.18 代码完成（番茄钟：主进程计时 + 防休眠 + 头顶胶囊 + 右键菜单 + 归零大对话框；轻量档不换图），等待人工验收 |
+| 2026-10-23 | Phase 3.19 代码完成（极致档被击飞差分：铁盆 + 慌张，仅 airborne 生效），等待人工验收 |
+| 2026-10-23 | Phase 3.20 代码完成（设置面板重排：两张卡片 + 精简单行文案 + 主按钮收口右下），等待人工验收 |
+| 2026-10-23 | Phase 3.21 代码完成（剪贴板吐槽：主进程轮询 + 被动气泡；语音播报：中文女声 TTS + 两个开关；设置页三卡片 + 滚动区拆分），等待人工验收 |
+| 2026-10-23 | Phase 3.22 代码完成（猜拳小游戏：右键入口 + 气泡牌桌 + 好感联动 + 牌局锁菜单），等待人工验收 |
+| 2026-10-23 | Phase 3.23 代码完成（欢呼差分接入：专注归零 3 秒 + 猜拳认输，标准/极致双档素材），等待人工验收 |
 | 11 月中 | Phase 3 完成，开始收集反馈 |
 | 12-04 前 | 报告 + 截图 + 安装包/源码提交 |

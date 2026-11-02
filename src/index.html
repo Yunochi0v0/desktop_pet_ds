@@ -41,14 +41,19 @@
       角色立绘是已经抠好底的透明 PNG（内部白色如女仆头饰、衣领、眼睛高光都保留），
       由 .deepworks 里的脚本从上传的原图处理而来。
 
-      ⚠️ 立绘差分（Phase 3.5 起）：<img> 的 src 现在由「思考深度」决定，
-         三张图分别是
-           low -> assets/pet-low.png   （Q 版三头身）
-           high-> assets/pet-high.png  （中等比例）
-           max -> assets/pet-max.png   （九头身）
-         映射表在 renderer.js 的 DEPTHS 里，**换图只要覆盖同名文件**，
-         不需要改任何代码。HTML 里这个 src 只是首帧兜底，
-         页面加载后 init() 会按 localStorage 里存的深度覆盖它。
+      ⚠️ 立绘规则（Phase 3.16 起）：
+         · 轻量（low）-> assets/pet-low.png   （半身 Q 版，原样）
+         · 极致（max）-> assets/pet-max.png   （九头身，原样）
+         · 标准（high）-> 四张表情随状态切换
+             pot   assets/pet-pot.png   （铁盆常态 / 被甩飞时的防御姿态）
+             idle  assets/pet-idle.png  （死鱼眼 + 聊天泡，20≤好感<40）
+             sad   assets/pet-sad.png   （含泪 + 汗滴，好感<20）
+             sleep assets/pet-sleep.png （抱枕 + Z 字气泡，60 秒无交互）
+         决策逻辑在 renderer.js 的 currentSpriteSrc()：标准档看表情，
+         其余档位看 DEPTHS[].src —— 两套规则不会同时生效。
+         **换图只要覆盖同名文件**，不需要改任何代码。
+         HTML 里这个 src 只是首帧兜底（按默认档 low），
+         页面加载后 init() 会按存档的档位覆盖它。
 
       draggable="false" 很关键：否则拖拽时 Chromium 会启动图片的原生拖拽，
       冒出一个半透明的「幽灵图片」，把自定义拖拽搞乱。
@@ -66,7 +71,7 @@
     </div>
 
     <!--
-      Phase 2：气泡对话框 / Phase 3：同一个气泡里装两个「视图」
+      Phase 2：气泡对话框 / Phase 3：同一个气泡里装多个「视图」
       #bubble        外层：只负责「定位」（JS 用 translate3d 摆放）
       .bubble-inner  内层：视觉样式 + 淡入缩放动画
       同样拆两层，理由和 #pet 一样：定位用 transform，动画也用 transform。
@@ -75,11 +80,14 @@
       由 renderer.js 的 positionBubble() 动态切换。
 
       Phase 3 的结构变化（仍复用同一个气泡，不新开窗口）：
-        .bubble-head      标题条 —— 右侧新增「齿轮」按钮（#bubble-gear）
+        .bubble-head      标题条 —— 右侧是「聊天 / 待办」页签 + 齿轮（#bubble-gear）
         #view-chat        视图 A：聊天（消息列表 + 输入框 + 发送）
         #view-settings    视图 B：设置（API Key 密码框 + 保存）
         #view-wallet      视图 C：钱包（Phase 3.14，右键桌宠查余额）
-      三个视图用 hidden 属性互斥显示，由 renderer.js 的 setPanel() 切换。
+        #view-game        视图 D：猜拳（Phase 3.22）
+        #view-todo        视图 E：待办（Phase 3.25，从独立悬浮面板并入）
+        #view-weather     视图 F：天气（Phase 3.27，从独立卡片并入）
+      六个视图用 hidden 属性互斥显示，由 renderer.js 的 setPanel() 切换。
       ⚠️ CSS 里必须补 `.bubble-view[hidden] { display: none }`，
          否则作者样式里的 display:flex 会盖过 [hidden] 的默认 display:none。
     -->
@@ -96,26 +104,65 @@
           <span class="bubble-dot" aria-hidden="true"></span>
           <span id="bubble-title" class="bubble-title">吃白饭的大肥鱼</span>
 
-          <!-- 齿轮：点一下在「聊天」和「设置」之间切换 -->
-          <button
-            id="bubble-gear"
-            class="bubble-gear"
-            type="button"
-            title="设置（填 API key）"
-            aria-label="设置"
-          >
-            <!-- 齿轮用内联 SVG 画，不引外部图标库（CSP 禁止远程资源） -->
-            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false">
-              <path
-                fill="currentColor"
-                d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
-              />
-            </svg>
-          </button>
+          <div class="bubble-head-actions">
+            <!--
+              聊天 / 待办分页：两个都是「跟大肥鱼说话」的页面，
+              所以留在同一个 #bubble 里，不再另开悬浮面板。
+            -->
+            <div id="bubble-tabs" class="bubble-tabs" role="tablist" aria-label="对话框页面">
+              <button
+                id="bubble-tab-chat"
+                class="bubble-tab is-active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="view-chat"
+              >
+                聊天
+              </button>
+              <button
+                id="bubble-tab-todo"
+                class="bubble-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="view-todo"
+              >
+                待办
+              </button>
+              <button
+                id="bubble-tab-weather"
+                class="bubble-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="view-weather"
+              >
+                天气
+              </button>
+            </div>
+
+            <!-- 齿轮：点一下在「聊天」和「设置」之间切换 -->
+            <button
+              id="bubble-gear"
+              class="bubble-gear"
+              type="button"
+              title="设置（填 API key）"
+              aria-label="设置"
+            >
+              <!-- 齿轮用内联 SVG 画，不引外部图标库（CSP 禁止远程资源） -->
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false">
+                <path
+                  fill="currentColor"
+                  d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <!-- ================= 视图 A：聊天 ================= -->
-        <div id="view-chat" class="bubble-view">
+        <div id="view-chat" class="bubble-view" role="tabpanel" aria-labelledby="bubble-tab-chat">
           <!--
             消息列表：渲染进程往里追加 .msg 节点。
             空的时候 CSS 用 :empty 把它隐藏，保持 Phase 2 那种紧凑的小气泡。
@@ -144,71 +191,156 @@
           </div>
         </div>
 
-        <!-- ================= 视图 B：设置（Phase 3 新增） ================= -->
-        <div id="view-settings" class="bubble-view" hidden>
-          <label class="bubble-label" for="key-input">
-            DeepSeek API Key（填一次就存在本机）
-          </label>
+        <!--
+          ================= 视图 B：设置（Phase 3 新增，Phase 3.20 重排） =================
+          从「一列控件平铺」改成「两张卡片 + 底部主按钮」：
+            · 卡片给内容一个分组边界，用户扫一眼就知道哪块管 API、哪块管记忆；
+            · 卡片之间留白比卡片内部大，眼睛能自然分段；
+            · 危险操作（清空记忆）锁在它所属的卡片里，不再和「保存」挤在同一行。
 
+          ⚠️ 所有 id 都没变（key-input / key-status / depth-select / depth-status /
+             memory-status / memory-clear / key-clear / key-save），renderer.js 的
+             绑定和单测断言都不用改。
+        -->
+        <div id="view-settings" class="bubble-view settings" hidden>
           <!--
-            type="password"：用系统统一的圆点遮罩，明文不进截图、不被旁人一眼看到。
-            ⚠️ 这里只是「视觉遮挡」，localStorage 里仍是明文 —— 本机自己的 key，
-               这个取舍写进了 DECISIONS.md（D7）。
+            卡片区单独一层：只有这一层滚动，「保存设置」永远钉在气泡底部。
+            这样设置页再长（Phase 3.21 加了第三张卡片）也不会出现
+           「下拉框被按钮切掉一半」的画面。
           -->
-          <input
-            id="key-input"
-            class="bubble-input bubble-input--key"
-            type="password"
-            placeholder="sk-..."
-            spellcheck="false"
-            autocomplete="off"
-            aria-label="DeepSeek API Key"
-          />
+          <div class="settings-scroll">
+          <!-- ---------- 区块一：API 与模型 ---------- -->
+          <section class="settings-card" aria-labelledby="settings-api-title">
+            <div class="settings-card-head">
+              <h3 id="settings-api-title" class="settings-card-title">API 与模型</h3>
+              <span class="settings-card-meta">本机保存</span>
+            </div>
 
-          <p id="key-status" class="key-status">还没有饭卡，先填一个才能聊天～</p>
+            <div class="settings-field">
+              <label class="settings-label" for="key-input">API Key</label>
 
-          <!--
-            思考深度：一个开关同时管两件事 ——
-              ① 换装：用哪张立绘、桌宠多大（Phase 3.5）；
-              ② 换脑子：请求发给哪个模型、回答预算多少、要不要显示推理过程（Phase 3.6）。
-            采用原生 <select>：macOS 会弹出系统菜单，键盘/触控板都好用，
-            而且不需要自己实现一遍下拉列表（少一份可能出错的状态机）。
-            三个 value 必须与 renderer.js 的 DEPTHS 键名一致：low / high / max。
-          -->
-          <label class="bubble-label" for="depth-select">思考深度</label>
-          <div class="bubble-select-wrap">
-            <select id="depth-select" class="bubble-select" aria-label="思考深度">
-              <option value="low">轻量 · 快速直答 · 192px</option>
-              <option value="high">标准 · 周到一些 · 190×250</option>
-              <option value="max">极致 · 会推理 · 210×315</option>
-            </select>
-          </div>
-          <p id="depth-status" class="key-status">当前：轻量 · chat · 192×192</p>
+              <!--
+                type="password"：用系统统一的圆点遮罩，明文不进截图、不被旁人一眼看到。
+                ⚠️ 这里只是「视觉遮挡」，localStorage 里仍是明文 —— 本机自己的 key，
+                   这个取舍写进了 DECISIONS.md（D7）。
+              -->
+              <input
+                id="key-input"
+                class="bubble-input bubble-input--key settings-control"
+                type="password"
+                placeholder="sk-..."
+                spellcheck="false"
+                autocomplete="off"
+                aria-label="DeepSeek API Key"
+              />
 
-          <!--
-            [AI-GEN] Phase 3.12：本地记忆
-            记忆存在 localStorage['chat_history']，清空只清聊天记录。
-            （Phase 3.13 起好感度改为后台数值，界面不显示任何数字或进度条。）
-          -->
-          <label class="bubble-label">聊天记忆</label>
-          <p id="memory-status" class="key-status">记忆 0 条</p>
-          <div class="bubble-foot">
+              <!-- 提示语一行：左边是状态（renderer.js 写入），右边是低调的「清除」文字按钮。
+                   清除 key 属于低频且有破坏性的操作，所以不做成独立按钮，只留一条文字链。 -->
+              <p class="settings-note settings-note--row">
+                <span id="key-status" class="key-status">还没有饭卡，先填一个才能聊天～</span>
+                <button id="key-clear" class="settings-link" type="button" title="清除已保存的 Key">
+                  清除
+                </button>
+              </p>
+            </div>
+
+            <div class="settings-field">
+              <label class="settings-label" for="depth-select">思考深度</label>
+
+              <!--
+                一个开关同时管两件事 ——
+                  ① 换装：用哪张立绘、桌宠多大（Phase 3.5）；
+                  ② 换脑子：请求发给哪个模型、回答预算多少、要不要显示推理过程（Phase 3.6）。
+                采用原生 <select>：macOS 会弹出系统菜单，键盘/触控板都好用，
+                而且不需要自己实现一遍下拉列表（少一份可能出错的状态机）。
+                三个 value 必须与 renderer.js 的 DEPTHS 键名一致：low / high / max。
+              -->
+              <div class="bubble-select-wrap">
+                <select id="depth-select" class="bubble-select settings-control" aria-label="思考深度">
+                  <option value="low">轻量 · 快速直答</option>
+                  <option value="high">标准 · 周到一些</option>
+                  <option value="max">极致 · 会推理</option>
+                </select>
+              </div>
+              <p id="depth-status" class="settings-note key-status">当前模型支持推理过程展示</p>
+            </div>
+          </section>
+
+          <!-- ---------- 区块二：记忆管理 ---------- -->
+          <section class="settings-card" aria-labelledby="settings-memory-title">
+            <div class="settings-card-head">
+              <h3 id="settings-memory-title" class="settings-card-title">记忆管理</h3>
+              <!--
+                条数和「最近 5 轮会带给模型」合成一行放在标题右侧（小号灰字）。
+                ⚠️ 只有 #memory-status 由 renderer.js 写，后面的说明是静态文本 ——
+                   这样单测里「记忆 N 条」的断言不用跟着改。
+              -->
+              <span class="settings-card-meta">
+                <span id="memory-status">记忆 0 条</span>
+                <span class="settings-card-dot" aria-hidden="true">·</span>
+                <span>最近 5 轮会带给模型</span>
+              </span>
+            </div>
+
+            <p class="settings-note">只清聊天记录，好感度不受影响。</p>
+
+            <!--
+              [AI-GEN] Phase 3.12：本地记忆
+              记忆存在 localStorage['chat_history']，清空只清聊天记录。
+              （Phase 3.13 起好感度改为后台数值，界面不显示任何数字或进度条。）
+              危险按钮用「描边 + 浅红底」而不是实心红：不抢「保存设置」的视觉重心，
+              同时靠颜色和位置提示「这一下是不可逆的」。
+            -->
             <button
               id="memory-clear"
-              class="bubble-ghost"
+              class="settings-danger"
               type="button"
-              title="清空 chat_history"
+              title="清空 chat_history（不可撤销）"
             >
               清空聊天记忆
             </button>
-            <span class="bubble-tag">最近 5 轮会带给模型</span>
+          </section>
+
+          <!-- ---------- 区块三：声音与提醒（Phase 3.21） ---------- -->
+          <section class="settings-card" aria-labelledby="settings-voice-title">
+            <div class="settings-card-head">
+              <h3 id="settings-voice-title" class="settings-card-title">声音与提醒</h3>
+              <span class="settings-card-meta">即时生效</span>
+            </div>
+
+            <!--
+              两个开关都做成「标签在左、下拉框在右」的行式布局：
+              气泡总宽只有 300px，再按「标签在上、控件在下」排，设置页会高到放不下。
+              状态不另起一行写 —— 下拉框自己就显示着当前选择（和思考深度同一个思路）。
+            -->
+            <div class="settings-row">
+              <label class="settings-label" for="speech-select">语音播报</label>
+              <div class="bubble-select-wrap">
+                <select id="speech-select" class="bubble-select settings-control" aria-label="语音播报">
+                  <option value="off">关闭 · 只显示文字</option>
+                  <option value="on">开启 · 中文女声朗读</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 只在「开了语音但这台机器没有引擎」时才出现（空的时候 CSS 隐藏） -->
+            <p id="speech-status" class="settings-note key-status"></p>
+
+            <div class="settings-row">
+              <label class="settings-label" for="clip-select">剪贴板吐槽</label>
+              <div class="bubble-select-wrap">
+                <select id="clip-select" class="bubble-select settings-control" aria-label="剪贴板吐槽">
+                  <option value="on">开启 · 复制报错时嘀咕</option>
+                  <option value="off">关闭 · 不读剪贴板</option>
+                </select>
+              </div>
+            </div>
+          </section>
           </div>
 
-          <div class="bubble-foot">
-            <button id="key-clear" class="bubble-ghost" type="button">
-              清除
-            </button>
-            <button id="key-save" class="bubble-send" type="button">保存</button>
+          <!-- ---------- 底部：唯一的全局主按钮 ---------- -->
+          <div class="settings-actions">
+            <button id="key-save" class="bubble-send settings-save" type="button">保存设置</button>
           </div>
         </div>
 
@@ -220,10 +352,354 @@
         <div id="view-wallet" class="bubble-view" hidden>
           <p id="wallet-text" class="wallet-text" role="status" aria-live="polite">（翻找钱包中...）</p>
           <div class="bubble-foot">
-            <span class="bubble-tag">右键查余额 · 左键回聊天</span>
+            <span class="bubble-tag">右键菜单可再次查余额 · 左键回聊天</span>
           </div>
         </div>
+
+        <!--
+          ================= 视图 D：猜拳（Phase 3.22） =================
+          仍然是 #bubble 里的第四个视图，不新开窗口 —— 理由同钱包页：
+            · 定位 / 尾巴 / 淡入 / 命中检测 / 鼠标穿透已经调好了，复制一份必然出现
+              「面板点不动」或者「气泡和角色各飘各的」；
+            · 游戏是「跟她说话」的一种，本来就该长在同一个气泡里。
+
+          结构分三段，由 renderer.js 的 renderGameRound() 切换：
+            .game-hands   出拳按钮（可玩状态）
+            .game-actions 结果后的【再来一局】/【不玩了】
+          两段用 hidden 互斥，⚠️ CSS 必须补 .game-hands[hidden] / .game-actions[hidden]
+          的 display:none（下面给了 flex/grid，作者样式会压过 UA 的 [hidden]）。
+
+          [X] 放在面板自己的标题行，而不是复用右上角齿轮：
+          齿轮是「切到设置」的入口，游戏期间点它会把牌局丢在后台，语义不对。
+        -->
+        <div id="view-game" class="bubble-view game" hidden>
+          <div class="game-top">
+            <span id="game-score" class="game-score">出拳吧，本小姐让你先</span>
+            <button
+              id="game-close"
+              class="game-close"
+              type="button"
+              title="不玩了（Esc）"
+              aria-label="退出猜拳"
+            >
+              ✕
+            </button>
+          </div>
+
+          <!-- 判定结果：「你出了[剪刀]，本小姐出了[石头]」-->
+          <p id="game-moves" class="game-moves" role="status" aria-live="polite"></p>
+          <!-- 她的台词：赢了撇嘴、输了嘲讽、平局死鱼眼 -->
+          <p id="game-line" class="game-line"></p>
+
+          <div id="game-hands" class="game-hands">
+            <button class="game-hand" type="button" data-hand="rock" aria-label="出石头">
+              <span class="game-emoji" aria-hidden="true">✊</span>
+              <span class="game-name">石头</span>
+            </button>
+            <button class="game-hand" type="button" data-hand="scissors" aria-label="出剪刀">
+              <span class="game-emoji" aria-hidden="true">✌️</span>
+              <span class="game-name">剪刀</span>
+            </button>
+            <button class="game-hand" type="button" data-hand="paper" aria-label="出布">
+              <span class="game-emoji" aria-hidden="true">✋</span>
+              <span class="game-name">布</span>
+            </button>
+          </div>
+
+          <div id="game-actions" class="game-actions" hidden>
+            <button id="game-again" class="game-btn" type="button">再来一局</button>
+            <button id="game-quit" class="game-btn game-btn--ghost" type="button">不玩了</button>
+          </div>
+        </div>
+
+        <!--
+          ================= 视图 E：待办（Phase 3.25 整合） =================
+          原来它是一块 fixed 的独立悬浮面板；现在收进 #bubble，作为第五个视图。
+          这样聊天 / 待办共用同一个气泡、同一套定位 / 尾巴 / 淡入 / 命中检测，
+          不会再出现「两块窗口各飘各的」。
+
+          标题栏由 .bubble-head 的「聊天 / 待办」页签承担，所以这里不再重复
+          写一遍大标题；只保留完成计数和关闭按钮。完成任务的台词显示在
+          #todo-say 里，仍然属于同一个对话框，不是另开的文本框。
+        -->
+        <div id="view-todo" class="bubble-view" role="tabpanel" aria-labelledby="bubble-tab-todo" hidden>
+          <p id="todo-say" class="todo-say" role="status" aria-live="polite" hidden></p>
+
+          <section id="todo-panel" class="todo-panel" role="region" aria-label="待办事项">
+            <header class="todo-head">
+              <div class="todo-head-main">
+                <span id="todo-count" class="todo-count">0/0</span>
+                <span class="todo-head-hint">本机保存</span>
+              </div>
+              <button
+                id="todo-close"
+                class="todo-close"
+                type="button"
+                title="收起待办（Esc）"
+                aria-label="收起待办事项"
+              >
+                ✕
+              </button>
+            </header>
+
+            <form id="todo-form" class="todo-form" autocomplete="off">
+              <input
+                id="todo-input"
+                class="todo-input"
+                type="text"
+                maxlength="120"
+                placeholder="写点要做的……"
+                aria-label="新任务内容"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button id="todo-add" class="todo-add" type="submit">添加</button>
+            </form>
+
+            <div class="todo-lists">
+              <div class="todo-group">
+                <h4 class="todo-group-title">
+                  未完成
+                  <span id="todo-pending-count" class="todo-group-num">0</span>
+                </h4>
+                <ul id="todo-pending" class="todo-list" aria-label="未完成任务"></ul>
+                <p id="todo-empty" class="todo-empty">暂时没事做，摸鱼吧。</p>
+              </div>
+
+              <div class="todo-group">
+                <h4 class="todo-group-title todo-group-title--done">
+                  已完成
+                  <span id="todo-done-count" class="todo-group-num">0</span>
+                </h4>
+                <ul id="todo-done" class="todo-list" aria-label="已完成任务"></ul>
+              </div>
+            </div>
+
+            <p class="todo-foot">数据只存在本机 · 点文字或方框即可勾选</p>
+          </section>
+        </div>
+
+        <!--
+          ================= 视图 F：天气（Phase 3.27 整合） =================
+          天气不再是独立卡片，而是同一个 #bubble 的第六个视图。
+          页签 / 标题栏 / 尾巴 / 定位 / 穿透全部复用现有逻辑。
+
+          #weather-page 的 data-kind 由 renderer.js 按主进程返回的天气类型写入：
+            sunny / rain / cloudy / snow / fog / storm / error / loading
+          CSS 根据它切换整页底色，并在 #weather-fx 里生成对应的动态层：
+            · 雨天 / 雷雨：雨滴下落
+            · 雪天：雪花飘落
+            · 多云：云团漂移
+            · 雾天：雾带缓慢流动
+            · 晴天：太阳光晕旋转
+          所有动效都用纯 CSS + DOM 小元素，不引外部库，也不破坏 CSP。
+        -->
+        <div
+          id="view-weather"
+          class="bubble-view weather-view"
+          role="tabpanel"
+          aria-labelledby="bubble-tab-weather"
+          hidden
+        >
+          <section id="weather-page" class="weather-page" data-kind="other" aria-label="今日天气">
+            <div class="weather-scene" aria-hidden="true">
+              <div class="weather-sky"></div>
+              <div id="weather-fx" class="weather-fx"></div>
+            </div>
+
+            <div class="weather-content">
+              <header class="weather-page-head">
+                <!--
+                  Phase 3.28：地区选择入口。
+                  以前这里是写死的「北京 · 今日」；现在点击展开 #weather-loc-panel，
+                  选完城市存进 localStorage，下次打开还是它。
+                -->
+                <button
+                  id="weather-loc-btn"
+                  class="weather-loc"
+                  type="button"
+                  title="切换查询地区"
+                  aria-haspopup="dialog"
+                  aria-expanded="false"
+                  aria-controls="weather-loc-panel"
+                >
+                  <i class="weather-loc-dot" aria-hidden="true"></i>
+                  <span id="weather-loc-name" class="weather-loc-name">北京</span>
+                  <span class="weather-loc-hint">切换</span>
+                </button>
+                <div class="weather-actions">
+                  <button id="weather-refresh" class="weather-btn" type="button" title="重新拉取天气">
+                    刷新
+                  </button>
+                  <button
+                    id="weather-close"
+                    class="weather-btn weather-btn--close"
+                    type="button"
+                    title="关闭天气（Esc）"
+                    aria-label="关闭天气"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </header>
+
+              <div class="weather-main">
+                <span id="weather-icon" class="weather-icon" aria-hidden="true">🌤️</span>
+                <div class="weather-reading">
+                  <div id="weather-temp" class="weather-temp">--</div>
+                  <div class="weather-meta">
+                    <span id="weather-cond" class="weather-cond" hidden>天气</span>
+                    <span id="weather-place" class="weather-place">北京</span>
+                  </div>
+                </div>
+              </div>
+
+              <p id="weather-date" class="weather-date">📅 ----</p>
+              <p id="weather-body" class="weather-body" role="status" aria-live="polite">
+                正在获取天气…
+              </p>
+              <p id="weather-say" class="weather-say" role="status" aria-live="polite" hidden></p>
+
+              <p class="weather-foot">
+                <span id="weather-updated">等待更新</span>
+                <span>Open-Meteo</span>
+              </p>
+            </div>
+
+            <!--
+              Phase 3.28：地区选择浮层。
+              关键词走主进程的 search-location IPC（Open-Meteo 地名接口），
+              这里只负责展示候选；点一条 = 存 localStorage + 立刻重拉天气。
+            -->
+            <div
+              id="weather-loc-panel"
+              class="weather-loc-panel"
+              role="dialog"
+              aria-labelledby="weather-loc-title"
+              hidden
+            >
+              <div class="weather-loc-head">
+                <strong id="weather-loc-title" class="weather-loc-title">选择地区</strong>
+                <button
+                  id="weather-loc-close"
+                  class="weather-btn weather-btn--close"
+                  type="button"
+                  title="收起地区选择"
+                  aria-label="收起地区选择"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form id="weather-loc-form" class="weather-loc-form" autocomplete="off">
+                <input
+                  id="weather-loc-input"
+                  class="weather-loc-input"
+                  type="search"
+                  placeholder="输入城市名，如 杭州 / 成都 / Tokyo"
+                  maxlength="40"
+                  aria-label="搜索城市"
+                />
+                <button id="weather-loc-search" class="weather-btn weather-btn--go" type="submit">
+                  搜索
+                </button>
+              </form>
+
+              <p
+                id="weather-loc-status"
+                class="weather-loc-status"
+                role="status"
+                aria-live="polite"
+                hidden
+              ></p>
+
+              <ul
+                id="weather-loc-results"
+                class="weather-loc-results"
+                role="listbox"
+                aria-label="地区搜索结果"
+              ></ul>
+
+              <div class="weather-loc-quick">
+                <span class="weather-loc-quick-label">常用城市</span>
+                <div id="weather-loc-quick" class="weather-loc-quick-list"></div>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
+    </div>
+
+    <!--
+      Phase 3.18：番茄钟倒计时胶囊
+      刻意**不复用** #bubble：
+        ① 气泡是「对话框」，会挡住聊天内容、也会被聊天内容顶高；
+        ② 这只是个常驻的小状态条，不该抢焦点、不该有输入框；
+        ③ 两者可以同时在屏 —— 所以必须能各自定位（见 positionPomoChip）。
+      纯展示，不参与命中检测：鼠标点上去会穿透到桌面，不影响打字。
+    -->
+    <div id="pomo-chip" class="pomo-chip" role="timer" aria-live="off" aria-hidden="true">
+      <span id="pomo-chip-text" class="pomo-chip-text">⏳ 专注中 25:00</span>
+    </div>
+
+    <!--
+      Phase 3.18：右键菜单
+      以前右键桌宠是「直接查余额」，加了番茄钟之后一个动作要承载四件事，
+      只能升级成菜单。菜单是普通 DOM 按钮（不是原生 Menu），原因：
+        · 原生菜单弹出时会抢走窗口焦点，桌宠的鼠标穿透状态会错乱；
+        · 原生菜单无法跟着桌宠的缩放 / 位置走，在小屏幕上容易飘出屏幕。
+      ⚠️ 打开菜单时必须把它算进「可交互区域」，否则鼠标穿透会让按钮点不动。
+    -->
+    <div id="pet-menu" class="pet-menu" role="menu" aria-label="桌宠菜单" aria-hidden="true">
+      <!--
+        Phase 3.22：牌局进行中，菜单只留「停止计时」可用（安全阀），
+        其余项置灰并显示这句提示 —— 由 renderer.js 的 lockMenuForGame() 控制。
+      -->
+      <div id="pet-menu-note" class="pet-menu-note" hidden>牌局进行中，先打完这局</div>
+      <button class="pet-menu-item" type="button" role="menuitem" data-action="pomodoro-focus">
+        🍅 开启专注
+      </button>
+      <button class="pet-menu-item" type="button" role="menuitem" data-action="pomodoro-rest">
+        ☕ 开启休息
+      </button>
+      <button class="pet-menu-item" type="button" role="menuitem" data-action="pomodoro-stop">
+        🛑 停止计时
+      </button>
+      <div class="pet-menu-sep" role="separator"></div>
+      <!-- Phase 3.22：纯本地小游戏，不联网、不写记忆 -->
+      <button class="pet-menu-item" type="button" role="menuitem" data-action="game">
+        ✊ 跟大肥鱼猜拳
+      </button>
+      <!--
+        [AI-GEN] Phase 3.24：待办事项入口。
+        文案由 renderer.js 的 setMenuTodoLabel() 按「待办页是否展开」动态切换，
+        所以这里写「呼出」，打开后会变成「收起」。
+      -->
+      <button
+        id="pet-menu-todo"
+        class="pet-menu-item"
+        type="button"
+        role="menuitem"
+        data-action="todo"
+      >
+        📝 呼出待办事项
+      </button>
+      <!-- [AI-GEN] Phase 3.27：天气页开关（点击显示 / 隐藏） -->
+      <button
+        id="pet-menu-weather"
+        class="pet-menu-item"
+        type="button"
+        role="menuitem"
+        data-action="weather"
+      >
+        📅 查看今日天气
+      </button>
+      <button class="pet-menu-item" type="button" role="menuitem" data-action="wallet">
+        👛 查余额
+      </button>
+      <button class="pet-menu-item" type="button" role="menuitem" data-action="settings">
+        ⚙️ 设置
+      </button>
     </div>
 
     <script src="renderer.js"></script>

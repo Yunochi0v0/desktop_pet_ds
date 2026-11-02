@@ -17,6 +17,6 @@
   "author": "katzegott",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^45.0.0"
   }
 }
