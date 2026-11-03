@@ -112,6 +112,66 @@ body.dragging #pet {
   cursor: grabbing;
 }
 
+/* =============================================================================
+   Phase 3.29：点击 Q 弹反馈（Duang）
+   [AI-GEN] 独立的缩放层，只负责「被戳一下」的 jelly 形变。
+
+   为什么必须是独立 div：
+     · #pet        的 transform 归 rAF 独占（translate3d 定位，见 drawPet）
+     · .pet-core   的 transform 归 idle-breathe / impact-x / impact-y /
+                   sleep-breathe / 换图动画
+     · #pet-sprite 的 src 归状态机切图
+   戳一下的 scale 如果写在上面任何一层，都会把那套逻辑覆盖掉。
+
+   为什么不用 overflow: hidden：
+     窗口是「工作区全尺寸的透明窗口」（main.js 按 workArea 建），
+     scale 只是视觉变换，不会把窗口撑大。加 hidden 反而会裁掉
+     .pet-sprite 本来就有的约 5% 溢出（见 .pet-sprite 的注释）。
+     贴边时（x=0 或 x=maxX）左右会各多出约 7.5% 画框宽度，
+     那部分被屏幕边缘挡住是自然观感，也不影响命中判定（按 #pet 的 rect 算）。
+   ============================================================================= */
+#pet-duang {
+  width: 100%;
+  height: 100%;
+  /* [MANUAL] 以脚底中心为支点：压扁时像真的踩在地上，而不是原地缩小。
+     想改成「从头顶压下去」就换成 50% 0%。 */
+  transform-origin: 50% 100%;
+  /* 只有这一层会临时拿到 transform，提前提示合成器，回弹更跟手 */
+  will-change: transform;
+}
+
+#pet-duang.duang-active {
+  animation: jelly-duang 0.4s ease-in-out;
+}
+
+/* [AI-GEN] 压扁 → 拉长 → 轻收 → 复位，四段节奏模拟有弹性的一坨被戳中 */
+@keyframes jelly-duang {
+  0% {
+    transform: scale(1, 1);
+  }
+  30% {
+    /* 瞬间压扁：横向变宽、纵向变矮 */
+    transform: scale(1.15, 0.85);
+  }
+  60% {
+    /* 向上拉长回弹：比原来更瘦高一点 */
+    transform: scale(0.9, 1.1);
+  }
+  80% {
+    /* 轻微收缩，是第一次「过冲」的回摆 */
+    transform: scale(1.05, 0.95);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #pet-duang.duang-active {
+    animation: none;
+  }
+}
+
 /* 脚下投影：让角色像「站在桌面上」而不是飘着。
    挂在 #pet 上而不是 .pet-core 上，这样它不会跟着呼吸动画上下抖。 */
 #pet::after {

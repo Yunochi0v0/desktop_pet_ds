@@ -59,14 +59,24 @@
       冒出一个半透明的「幽灵图片」，把自定义拖拽搞乱。
     -->
     <div id="pet" role="img" aria-label="Prompt Pet 桌宠">
-      <div class="pet-core">
-        <img
-          id="pet-sprite"
-          class="pet-sprite"
-          src="assets/pet-low.png"
-          alt=""
-          draggable="false"
-        />
+      <!--
+        Phase 3.29：独立的 duang 缩放层。
+        为什么非要再加一层：
+          #pet        的 transform 归 rAF 独占（translate3d 拖拽定位）
+          .pet-core   的 transform 归呼吸 / 冲击 / 睡眠 / 换图动画
+          #pet-sprite 的 src 归状态机切图
+        戳一下的 scale 挂在三者任何一个上，都会把那套逻辑覆盖掉。
+      -->
+      <div id="pet-duang">
+        <div class="pet-core">
+          <img
+            id="pet-sprite"
+            class="pet-sprite"
+            src="assets/pet-low.png"
+            alt=""
+            draggable="false"
+          />
+        </div>
       </div>
     </div>
 

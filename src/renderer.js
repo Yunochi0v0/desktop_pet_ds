@@ -54,6 +54,8 @@
 'use strict';
 
 const pet = document.getElementById('pet');
+// Phase 3.29：Q 弹反馈的独立缩放层（详见 style.css 的 #pet-duang 说明）
+const petDuang = document.getElementById('pet-duang');
 const bubble = document.getElementById('bubble');
 const bubbleInput = document.getElementById('bubble-input');
 const api = window.petAPI; // 由 preload.js 注入
@@ -2497,6 +2499,33 @@ function onMouseDown(event) {
   event.preventDefault();
 }
 
+// -----------------------------------------------------------------------------
+// Phase 3.29：点击 Q 弹反馈（Duang）
+//   触发条件完全复用现有的「点击 vs 拖拽」判定：
+//     onMouseUp 里的 !wasDrag（= 按下到松手移动没超过 DRAG_THRESHOLD=4px）
+//   所以不需要再加一套 mousedown 坐标记录，也不会影响穿透 / 拖拽 / 甩飞。
+//
+//   ⚠️ 动画只加在 #pet-duang 上：
+//     · #pet        的 transform 归 rAF 独占（translate3d 定位）
+//     · .pet-core   的 transform 归呼吸 / 冲击 / 睡眠 / 换图动画
+//     · #pet-sprite 的 src 归状态机
+// -----------------------------------------------------------------------------
+const DUANG_CLASS = 'duang-active';
+const DUANG_ANIMATION = 'jelly-duang';
+
+/**
+ * [AI-GEN] 播放一次 Q 弹。
+ * 先摘 class、强制一次 reflow、再加回去 —— 否则连续点击时
+ * 浏览器认为「动画没变」，不会重新播放。
+ */
+function triggerDuang() {
+  if (!petDuang) return;
+  petDuang.classList.remove(DUANG_CLASS);
+  // 读一次布局属性就能触发 reflow，比 rAF 更直接
+  void petDuang.offsetWidth;
+  petDuang.classList.add(DUANG_CLASS);
+}
+
 function onMouseUp() {
   if (!press.active) return;
 
@@ -2512,6 +2541,10 @@ function onMouseUp() {
 
   // 单击球体 -> 开关气泡。拖拽过就绝不触发，避免「拖完手一松弹出气泡」
   if (!wasDrag && onPet) {
+    // Phase 3.29：先给一下触感反馈，再决定说不说话 / 开不开气泡。
+    // 放在最前面是刻意的 —— 气泡展开会盖住下半身，晚触发就看不到 Q 弹了。
+    triggerDuang();
+
     // Phase 3.16：戳醒的那一下不能顺手把气泡关掉 ——
     // 她要说的「干嘛吵醒我」就在气泡里，关掉等于白叫一声。
     if (woke) showWakeLine();
@@ -5672,6 +5705,15 @@ async function onCopy(button, text) {
 // 事件绑定
 // -----------------------------------------------------------------------------
 function bindPhase3Events() {
+  // Phase 3.29：Q 弹动画播完就摘掉 class，下次点击才能重新触发。
+  // 用 animationName 过滤：.pet-core 的呼吸 / 冲击动画也会冒泡到这一层。
+  if (petDuang) {
+    petDuang.addEventListener('animationend', (event) => {
+      if (event.animationName !== DUANG_ANIMATION) return;
+      petDuang.classList.remove(DUANG_CLASS);
+    });
+  }
+
   // 齿轮：在聊天 / 设置之间来回切
   if (bubbleGear) {
     bubbleGear.addEventListener('click', (event) => {
